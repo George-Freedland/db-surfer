@@ -120,10 +120,10 @@ export const DOC_SECTIONS: DocSection[] = [
 export const ABOUT = {
   label: 'About DBSurfer',
   paragraphs: [
-    'DBSurfer is a free, open-source, browser-based SQL client — think DBeaver / pgAdmin / Azure Data Studio, but running locally in your browser.',
+    'DBSurfer is a free, open-source, browser-based SQL client. Think DBeaver, pgAdmin, or Azure Data Studio, but running locally in your browser.',
     'Connect to as many databases as you want across PostgreSQL, MySQL/MariaDB, SQL Server, SQLite, MongoDB, and Redis. Connection details are stored locally in ~/.dbsurfer so reconnecting is instant, and you can clear saved credentials at any time.',
     'Everything runs on your machine: a small Express + node-driver backend and a React + CodeMirror frontend. Nothing is sent to any third party.',
-    'It is MIT-licensed and open source — contributions welcome.',
+    'It is MIT-licensed and open source. Contributions are welcome.',
   ],
   repo: 'https://github.com/George-Freedland/db-surfer',
 }

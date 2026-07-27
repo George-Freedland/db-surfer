@@ -2,7 +2,25 @@ import { useCallback, useState } from 'react'
 import { api } from '../api'
 import type { ColumnInfo, Connection, SchemaInfo } from '../api'
 import ContextMenu from './ContextMenu'
-import { genCount, genDelete, genInsert, genSelect, genUpdate } from '../sqlgen'
+import { genCount, genCreateTable, genDelete, genDropTable, genInsert, genSelect, genUpdate } from '../sqlgen'
+
+function defaultSchema(conn: Connection, schema: SchemaInfo | null): string {
+  if (schema) {
+    const names = Object.keys(schema.schemas)
+    if (names.includes('public')) return 'public'
+    if (names.includes('dbo')) return 'dbo'
+    if (names[0]) return names[0]
+  }
+  if (conn.type === 'mssql') return 'dbo'
+  if (conn.type === 'mysql') return conn.database
+  return 'public'
+}
+
+function createLabel(conn: Connection): string {
+  if (conn.type === 'mongodb') return 'New collection'
+  if (conn.type === 'redis') return 'New key'
+  return 'New table'
+}
 
 interface Props {
   connections: Connection[]
@@ -70,6 +88,7 @@ function ConnectionNode({
   const [schema, setSchema] = useState<SchemaInfo | null>(null)
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
 
   const loadSchema = useCallback(async () => {
     setLoading(true)
@@ -101,7 +120,13 @@ function ConnectionNode({
 
   return (
     <div className="conn-node">
-      <div className={`conn-row ${conn.connected ? 'connected' : ''}`}>
+      <div
+        className={`conn-row ${conn.connected ? 'connected' : ''}`}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          setMenu({ x: e.clientX, y: e.clientY })
+        }}
+      >
         <button className="tree-toggle" onClick={toggle}>
           {expanded ? '▾' : '▸'}
         </button>
@@ -171,6 +196,42 @@ function ConnectionNode({
           )}
         </div>
       )}
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          onClose={() => setMenu(null)}
+          items={[
+            conn.connected
+              ? { label: 'Disconnect', onClick: () => onDisconnect(conn) }
+              : { label: 'Connect', onClick: () => onConnect(conn) },
+            ...(conn.connected
+              ? [
+                  {
+                    label: 'Refresh schema',
+                    onClick: () => {
+                      setExpanded(true)
+                      loadSchema()
+                    },
+                  },
+                ]
+              : []),
+            { separator: true, label: '' },
+            { label: 'New SQL tab', onClick: () => onOpenQueryTab(conn.id, '') },
+            {
+              label: createLabel(conn),
+              onClick: () =>
+                onOpenQueryTab(conn.id, genCreateTable(conn.type, defaultSchema(conn, schema))),
+            },
+            { separator: true, label: '' },
+            { label: 'Edit connection', onClick: () => onEditConnection(conn) },
+            ...(conn.hasPassword
+              ? [{ label: 'Clear stored credentials', onClick: () => onClearCredentials(conn) }]
+              : []),
+            { label: 'Delete connection', danger: true, onClick: () => onDelete(conn) },
+          ]}
+        />
+      )}
     </div>
   )
 }
@@ -189,14 +250,35 @@ function SchemaNode({
   onAppendSql: Props['onAppendSql']
 }) {
   const [expanded, setExpanded] = useState(schemaName === 'public' || schemaName === 'main')
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   return (
     <div>
-      <div className="tree-row schema-row" onClick={() => setExpanded((e) => !e)}>
+      <div
+        className="tree-row schema-row"
+        onClick={() => setExpanded((e) => !e)}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          setMenu({ x: e.clientX, y: e.clientY })
+        }}
+      >
         <span className="tree-toggle">{expanded ? '▾' : '▸'}</span>
         <span className="tree-icon">⛁</span>
         {schemaName}
         <span className="tree-count">{tables.length}</span>
       </div>
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          onClose={() => setMenu(null)}
+          items={[
+            {
+              label: `${createLabel(conn)} in ${schemaName}`,
+              onClick: () => onOpenQueryTab(conn.id, genCreateTable(conn.type, schemaName)),
+            },
+          ]}
+        />
+      )}
       {expanded && (
         <div className="tree-children">
           {tables.map((t) => (
@@ -314,6 +396,11 @@ function TableNode({
               label: 'DELETE row',
               danger: true,
               onClick: () => appendWithColumns((cols) => genDelete(conn.type, schemaName, table.name, cols)),
+            },
+            {
+              label: 'DROP TABLE',
+              danger: true,
+              onClick: () => onAppendSql(genDropTable(conn.type, schemaName, table.name)),
             },
             { separator: true, label: '' },
             {

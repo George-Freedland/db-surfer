@@ -98,6 +98,29 @@ export function genUpdate(type: DbType, schema: string, table: string, columns: 
   return `UPDATE ${qualify(type, schema, table)}\nSET ${sets}\nWHERE ${where};`
 }
 
+export function genCreateTable(type: DbType, schema: string, table = 'new_table'): string {
+  switch (type) {
+    case 'mongodb':
+      return JSON.stringify({ create: 'new_collection' }, null, 2)
+    case 'redis':
+      return 'SET new:key "value"'
+    case 'mysql':
+      return `CREATE TABLE ${qualify(type, schema, table)} (\n  id INT AUTO_INCREMENT PRIMARY KEY,\n  name VARCHAR(255) NOT NULL,\n  created_at DATETIME DEFAULT CURRENT_TIMESTAMP\n);`
+    case 'mssql':
+      return `CREATE TABLE ${qualify(type, schema, table)} (\n  id INT IDENTITY(1,1) PRIMARY KEY,\n  name NVARCHAR(255) NOT NULL,\n  created_at DATETIME2 DEFAULT SYSDATETIME()\n);`
+    case 'sqlite':
+      return `CREATE TABLE ${quoteIdent(type, table)} (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  name TEXT NOT NULL,\n  created_at TEXT DEFAULT (datetime('now'))\n);`
+    default:
+      return `CREATE TABLE ${qualify(type, schema, table)} (\n  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,\n  name TEXT NOT NULL,\n  created_at TIMESTAMPTZ DEFAULT now()\n);`
+  }
+}
+
+export function genDropTable(type: DbType, schema: string, table: string): string {
+  if (type === 'mongodb') return JSON.stringify({ drop: table }, null, 2)
+  if (type === 'redis') return `DEL ${table}`
+  return `DROP TABLE ${qualify(type, schema, table)};`
+}
+
 export function genDelete(type: DbType, schema: string, table: string, columns: ColumnInfo[]): string {
   if (type === 'mongodb') {
     return JSON.stringify({ delete: table, deletes: [{ q: { _id: 'value' }, limit: 1 }] }, null, 2)
