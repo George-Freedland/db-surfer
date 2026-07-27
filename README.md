@@ -1,6 +1,6 @@
 # DBSurfer
 
-A local, browser-based SQL client for Postgres — like DBeaver/pgAdmin, but in your browser.
+A local, browser-based SQL client for Postgres, like Azure/DBeaver/pgAdmin, but in your browser.
 
 ## Features
 
@@ -31,8 +31,8 @@ Then open http://localhost:5173.
 
 ## Security
 
-Never commit real credentials. This repo's `.gitignore` excludes `.env*` files, but DBSurfer doesn't use any by design — connection info lives in `~/.dbsurfer/connections.json` on your machine only. If you fork/deploy this, keep it local or put it behind auth before exposing it beyond localhost.
+Never commit real credentials. This repo's `.gitignore` excludes `.env*` files, but DBSurfer doesn't use any by design  connection info lives in `~/.dbsurfer/connections.json` on your machine only. If you fork/deploy this, keep it local or put it behind auth before exposing it beyond localhost.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT: see [LICENSE](LICENSE).
