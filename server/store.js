@@ -7,11 +7,15 @@ const DATA_DIR = path.join(os.homedir(), '.dbsurfer');
 const FILE = path.join(DATA_DIR, 'connections.json');
 
 function load() {
+  let raw;
   try {
-    return JSON.parse(fs.readFileSync(FILE, 'utf8'));
+    raw = JSON.parse(fs.readFileSync(FILE, 'utf8'));
   } catch {
     return [];
   }
+  if (!Array.isArray(raw)) return [];
+  // Migrate records created before the multi-engine `type` field existed.
+  return raw.map((c) => ({ type: 'postgres', ssl: false, ...c }));
 }
 
 function save(connections) {
@@ -80,4 +84,63 @@ export function clearSavedPassword(id) {
     delete conn.password;
     save(connections);
   }
+}
+
+const EXPORT_FIELDS = ['name', 'type', 'host', 'port', 'database', 'user', 'color', 'ssl'];
+
+export function exportConnections({ includePasswords = false } = {}) {
+  return {
+    format: 'dbsurfer-connections',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    connections: connections.map((conn) => {
+      const out = {};
+      for (const field of EXPORT_FIELDS) out[field] = conn[field];
+      if (includePasswords && conn.password) out.password = conn.password;
+      return out;
+    }),
+  };
+}
+
+function connectionKey(c) {
+  return `${c.type}|${c.host}|${c.port}|${c.database}|${c.user}`;
+}
+
+export function importConnections(incoming, { replaceExisting = false } = {}) {
+  if (!Array.isArray(incoming)) throw new Error('Import file has no "connections" array');
+  const existingByKey = new Map(connections.map((c) => [connectionKey(c), c]));
+  let added = 0;
+  let updated = 0;
+  let skipped = 0;
+
+  for (const raw of incoming) {
+    if (!raw || typeof raw !== 'object') continue;
+    const candidate = {
+      name: raw.name,
+      type: raw.type || 'postgres',
+      host: raw.host,
+      port: raw.port,
+      database: raw.database,
+      user: raw.user,
+      color: raw.color ?? null,
+      ssl: Boolean(raw.ssl),
+    };
+    const existing = existingByKey.get(connectionKey(candidate));
+    if (existing) {
+      if (replaceExisting) {
+        updateConnection(existing.id, { ...candidate, ...(raw.password ? { password: raw.password, savePassword: true } : {}) });
+        updated++;
+      } else {
+        skipped++;
+      }
+      continue;
+    }
+    const created = createConnection({
+      ...candidate,
+      ...(raw.password ? { password: raw.password, savePassword: true } : {}),
+    });
+    existingByKey.set(connectionKey(created), created);
+    added++;
+  }
+  return { added, updated, skipped };
 }

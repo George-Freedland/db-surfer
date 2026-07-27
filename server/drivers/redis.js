@@ -93,6 +93,10 @@ export async function query(client, text, maxRows) {
   return results;
 }
 
+export async function getCompletion() {
+  return { schema: {}, tables: [], columns: [] };
+}
+
 export function isAuthError(err) {
   return /NOAUTH|WRONGPASS|invalid username-password|invalid password/i.test(err.message || '');
 }

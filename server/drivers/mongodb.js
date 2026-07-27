@@ -94,6 +94,23 @@ export async function query({ client, dbName }, text, maxRows) {
   ];
 }
 
+export async function getCompletion({ client, dbName }) {
+  const collections = await client.db(dbName).listCollections().toArray();
+  const schema = {};
+  const columnSet = new Set();
+  for (const col of collections.slice(0, 40)) {
+    try {
+      const doc = await client.db(dbName).collection(col.name).findOne();
+      const keys = doc ? Object.keys(doc) : [];
+      schema[col.name] = keys;
+      keys.forEach((k) => columnSet.add(k));
+    } catch {
+      schema[col.name] = [];
+    }
+  }
+  return { schema, tables: collections.map((c) => c.name), columns: [...columnSet].sort() };
+}
+
 export function isAuthError(err) {
   return err.code === 18 || err.codeName === 'AuthenticationFailed';
 }

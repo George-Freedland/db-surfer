@@ -1,4 +1,5 @@
 import mysql from 'mysql2/promise';
+import { groupColumns } from './util.js';
 
 export async function create(conn, password) {
   return mysql.createPool({
@@ -80,6 +81,16 @@ export async function query(pool, sql, maxRows) {
       truncated: false,
     };
   });
+}
+
+export async function getCompletion(pool) {
+  const [rows] = await pool.query(`
+    SELECT TABLE_SCHEMA AS s, TABLE_NAME AS t, COLUMN_NAME AS c
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA NOT IN ('mysql', 'information_schema', 'performance_schema', 'sys')
+    ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION
+  `);
+  return groupColumns(rows);
 }
 
 export function isAuthError(err) {

@@ -6,6 +6,7 @@ import { genCount, genDelete, genInsert, genSelect, genUpdate } from '../sqlgen'
 
 interface Props {
   connections: Connection[]
+  width: number
   onNewConnection: () => void
   onEditConnection: (c: Connection) => void
   onConnect: (c: Connection) => Promise<boolean> | boolean
@@ -14,19 +15,29 @@ interface Props {
   onDelete: (c: Connection) => void
   onOpenQueryTab: (connectionId: string, sql: string) => void
   onAppendSql: (sql: string) => void
+  onExportSettings: () => void
+  onImportSettings: () => void
   onRefresh: () => void
 }
 
 export default function Sidebar(props: Props) {
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" style={{ width: props.width }}>
       <div className="sidebar-header">
         <span className="logo">
           <span className="logo-wave">~</span> DBSurfer
         </span>
-        <button className="icon-button" title="New connection" onClick={props.onNewConnection}>
-          +
-        </button>
+        <span className="sidebar-header-actions">
+          <button className="icon-button" title="Import connection settings" onClick={props.onImportSettings}>
+            ⇧
+          </button>
+          <button className="icon-button" title="Export connection settings" onClick={props.onExportSettings}>
+            ⇩
+          </button>
+          <button className="icon-button" title="New connection" onClick={props.onNewConnection}>
+            +
+          </button>
+        </span>
       </div>
       <div className="sidebar-body">
         {props.connections.length === 0 && (
@@ -255,12 +266,11 @@ function TableNode({
       <div
         className="tree-row table-row"
         onClick={toggle}
-        onDoubleClick={() => onOpenQueryTab(conn.id, genSelect(conn.type, schemaName, table.name))}
         onContextMenu={(e) => {
           e.preventDefault()
           setMenu({ x: e.clientX, y: e.clientY })
         }}
-        title="Double-click to open a SELECT in a new tab. Right-click for SQL generation."
+        title="Click to expand columns. Right-click for SQL generation."
       >
         <span className={`tree-toggle`}>{expanded ? '▾' : '▸'}</span>
         <span className={`tree-icon kind-${table.kind}`}>{KIND_ICONS[table.kind] || '▦'}</span>

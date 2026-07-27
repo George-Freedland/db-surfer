@@ -58,6 +58,19 @@ export interface ColumnInfo {
   default: string | null
 }
 
+export interface CompletionInfo {
+  schema: Record<string, string[]>
+  tables: string[]
+  columns: string[]
+}
+
+export interface ImportResult {
+  added: number
+  updated: number
+  skipped: number
+  connections: Connection[]
+}
+
 export class ApiError extends Error {
   code?: string
   position?: number
@@ -104,6 +117,20 @@ export const api = {
     request<{ columns: ColumnInfo[] }>(
       `/api/connections/${id}/columns?schema=${encodeURIComponent(schema)}&table=${encodeURIComponent(table)}`
     ),
+  completion: (id: string) => request<CompletionInfo>(`/api/connections/${id}/completion`),
+  exportSettings: (includePasswords: boolean) =>
+    request<{ connections: unknown[] }>(
+      `/api/connections/export${includePasswords ? '?includePasswords=1' : ''}`
+    ),
+  importSettings: (payload: unknown, replaceExisting: boolean) =>
+    request<ImportResult>('/api/connections/import', {
+      method: 'POST',
+      body: JSON.stringify(
+        Array.isArray(payload)
+          ? { connections: payload, replaceExisting }
+          : { ...(payload as object), replaceExisting }
+      ),
+    }),
   query: (id: string, sql: string) =>
     request<QueryResponse>(`/api/connections/${id}/query`, {
       method: 'POST',

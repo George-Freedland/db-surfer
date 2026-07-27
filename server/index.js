@@ -6,6 +6,8 @@ import {
   updateConnection,
   deleteConnection,
   clearSavedPassword,
+  exportConnections,
+  importConnections,
 } from './store.js';
 import {
   getHandle,
@@ -49,6 +51,22 @@ app.get('/api/db-types', (_req, res) => {
 
 app.get('/api/connections', (_req, res) => {
   res.json(listConnections().map(publicConnection));
+});
+
+app.get('/api/connections/export', (req, res) => {
+  const includePasswords = req.query.includePasswords === '1';
+  res.json(exportConnections({ includePasswords }));
+});
+
+app.post('/api/connections/import', (req, res) => {
+  const body = req.body || {};
+  const list = Array.isArray(body) ? body : body.connections;
+  try {
+    const summary = importConnections(list, { replaceExisting: Boolean(body.replaceExisting) });
+    res.json({ ...summary, connections: listConnections().map(publicConnection) });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 app.post('/api/connections', (req, res) => {
@@ -134,6 +152,16 @@ app.get('/api/connections/:id/columns', async (req, res) => {
   try {
     const { driver, handle } = await getHandle(req.params.id);
     res.json({ columns: await driver.getColumns(handle, schema, table) });
+  } catch (err) {
+    handleQueryError(req, res, err);
+  }
+});
+
+app.get('/api/connections/:id/completion', async (req, res) => {
+  try {
+    const { driver, handle } = await getHandle(req.params.id);
+    if (!driver.getCompletion) return res.json({ schema: {}, tables: [], columns: [] });
+    res.json(await driver.getCompletion(handle));
   } catch (err) {
     handleQueryError(req, res, err);
   }

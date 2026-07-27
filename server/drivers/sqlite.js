@@ -111,6 +111,20 @@ export async function query(db, text, maxRows) {
   return results;
 }
 
+export async function getCompletion(db) {
+  const tables = db
+    .prepare(`SELECT name FROM sqlite_master WHERE type IN ('table','view') AND name NOT LIKE 'sqlite_%'`)
+    .all();
+  const schema = {};
+  const columnSet = new Set();
+  for (const { name } of tables) {
+    const cols = db.prepare(`PRAGMA table_info("${name.replace(/"/g, '""')}")`).all();
+    schema[name] = cols.map((c) => c.name);
+    cols.forEach((c) => columnSet.add(c.name));
+  }
+  return { schema, tables: tables.map((t) => t.name), columns: [...columnSet].sort() };
+}
+
 export function isAuthError() {
   return false;
 }

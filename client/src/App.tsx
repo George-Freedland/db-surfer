@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, ApiError } from './api'
-import type { Connection, ConnectionInput, QueryResponse } from './api'
+import type { CompletionInfo, Connection, ConnectionInput, QueryResponse } from './api'
 import { DB_TYPES } from './dbTypes'
 import { downloadFile } from './exportUtils'
 import Sidebar from './components/Sidebar'
@@ -10,6 +10,8 @@ import type { SqlEditorHandle } from './components/SqlEditor'
 import ResultsPane from './components/ResultsPane'
 import ConnectionModal from './components/ConnectionModal'
 import PasswordModal from './components/PasswordModal'
+import DocsModal from './components/DocsModal'
+import Resizer from './components/Resizer'
 
 export interface Tab {
   id: string
@@ -28,6 +30,14 @@ export interface TabRun {
 
 const TABS_KEY = 'dbsurfer.tabs'
 const ACTIVE_KEY = 'dbsurfer.activeTab'
+const SIDEBAR_W_KEY = 'dbsurfer.sidebarWidth'
+const RESULTS_H_KEY = 'dbsurfer.resultsHeight'
+
+function loadNumber(key: string, fallback: number) {
+  const v = Number(localStorage.getItem(key))
+  return Number.isFinite(v) && v > 0 ? v : fallback
+}
+const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v))
 
 function newTab(n: number, connectionId: string | null = null): Tab {
   return { id: crypto.randomUUID(), title: `Script ${n}`, sql: '', connectionId }
@@ -56,8 +66,13 @@ export default function App() {
     | { type: 'password'; connection: Connection; error?: string }
     | null
   >(null)
+  const [docsOpen, setDocsOpen] = useState(false)
+  const [sidebarWidth, setSidebarWidth] = useState(() => loadNumber(SIDEBAR_W_KEY, 290))
+  const [resultsHeight, setResultsHeight] = useState(() => loadNumber(RESULTS_H_KEY, 280))
+  const [completions, setCompletions] = useState<Record<string, CompletionInfo>>({})
   const editorRef = useRef<SqlEditorHandle>(null)
   const importInputRef = useRef<HTMLInputElement>(null)
+  const settingsInputRef = useRef<HTMLInputElement>(null)
 
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? tabs[0]
 
@@ -67,6 +82,12 @@ export default function App() {
   useEffect(() => {
     if (activeTab) localStorage.setItem(ACTIVE_KEY, activeTab.id)
   }, [activeTab])
+  useEffect(() => {
+    localStorage.setItem(SIDEBAR_W_KEY, String(sidebarWidth))
+  }, [sidebarWidth])
+  useEffect(() => {
+    localStorage.setItem(RESULTS_H_KEY, String(resultsHeight))
+  }, [resultsHeight])
 
   const refreshConnections = useCallback(async () => {
     try {
@@ -79,6 +100,24 @@ export default function App() {
   useEffect(() => {
     refreshConnections()
   }, [refreshConnections])
+
+  const activeConnection = connections.find((c) => c.id === activeTab?.connectionId)
+
+  // Fetch autocomplete schema once per connected database
+  useEffect(() => {
+    const conn = activeConnection
+    if (!conn || !conn.connected || completions[conn.id]) return
+    let cancelled = false
+    api
+      .completion(conn.id)
+      .then((info) => {
+        if (!cancelled) setCompletions((prev) => ({ ...prev, [conn.id]: info }))
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [activeConnection, completions])
 
   // --- connection actions ---
 
@@ -259,6 +298,36 @@ export default function App() {
     downloadFile(`${activeTab.title || 'script'}.sql`, activeTab.sql, 'application/sql')
   }, [activeTab])
 
+  const exportSettings = useCallback(async () => {
+    const anySaved = connections.some((c) => c.hasSavedPassword)
+    let includePasswords = false
+    if (anySaved) {
+      includePasswords = confirm(
+        'Include saved passwords in the export?\n\nOK = include them (only if sharing privately).\nCancel = export connection settings without passwords (recommended).'
+      )
+    }
+    const data = await api.exportSettings(includePasswords)
+    downloadFile('dbsurfer-connections.json', JSON.stringify(data, null, 2), 'application/json')
+  }, [connections])
+
+  const importSettings = useCallback(
+    async (files: FileList | null) => {
+      if (!files || files.length === 0) return
+      try {
+        const payload = JSON.parse(await files[0].text())
+        const replace = confirm(
+          'Replace settings for connections that already exist (same host/port/db/user)?\n\nOK = update existing + add new.\nCancel = only add new, skip duplicates.'
+        )
+        const result = await api.importSettings(payload, replace)
+        await refreshConnections()
+        alert(`Imported: ${result.added} added, ${result.updated} updated, ${result.skipped} skipped.`)
+      } catch (err) {
+        alert(`Import failed: ${(err as Error).message}`)
+      }
+    },
+    [refreshConnections]
+  )
+
   // --- query execution ---
 
   const runSql = useCallback(
@@ -312,7 +381,6 @@ export default function App() {
   }, [activeTab, runSql])
 
   const run = runs[activeTab?.id ?? ''] ?? { status: 'idle' as const }
-  const activeConnection = connections.find((c) => c.id === activeTab?.connectionId)
   const editorHint = activeConnection
     ? DB_TYPES[activeConnection.type]?.queryHint
     : DB_TYPES.postgres.queryHint
@@ -321,6 +389,7 @@ export default function App() {
     <div className="app">
       <Sidebar
         connections={connections}
+        width={sidebarWidth}
         onNewConnection={() => setModal({ type: 'new-connection' })}
         onEditConnection={(c) => setModal({ type: 'edit-connection', connection: c })}
         onConnect={(c) => handleConnect(c)}
@@ -329,7 +398,13 @@ export default function App() {
         onDelete={handleDelete}
         onOpenQueryTab={insertQueryTab}
         onAppendSql={appendToActiveTab}
+        onExportSettings={exportSettings}
+        onImportSettings={() => settingsInputRef.current?.click()}
         onRefresh={refreshConnections}
+      />
+      <Resizer
+        orientation="vertical"
+        onDrag={(e) => setSidebarWidth(clamp(e.clientX, 200, 640))}
       />
       <main className="main">
         <TabBar
@@ -342,6 +417,7 @@ export default function App() {
           onCloseAll={closeAll}
           onAdd={addTab}
           onRename={(id, title) => updateTab(id, { title })}
+          onOpenDocs={() => setDocsOpen(true)}
         />
         {activeTab && (
           <>
@@ -400,12 +476,29 @@ export default function App() {
                 onChange={(sql) => updateTab(activeTab.id, { sql })}
                 onRun={runSelectionOrAll}
                 placeholder={editorHint}
+                dbType={activeConnection?.type}
+                completion={activeConnection ? completions[activeConnection.id] : null}
               />
             </div>
-            <ResultsPane run={run} />
+            <Resizer
+              orientation="horizontal"
+              onDrag={(e) => setResultsHeight(clamp(window.innerHeight - e.clientY, 120, window.innerHeight - 240))}
+            />
+            <ResultsPane run={run} height={resultsHeight} />
           </>
         )}
       </main>
+
+      <input
+        ref={settingsInputRef}
+        type="file"
+        accept=".json"
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          importSettings(e.target.files)
+          e.target.value = ''
+        }}
+      />
 
       {modal?.type === 'new-connection' && (
         <ConnectionModal onSave={handleSaveConnection} onClose={() => setModal(null)} />
@@ -423,6 +516,15 @@ export default function App() {
           error={modal.error}
           onSubmit={(password, save) => handleConnect(modal.connection, password, save)}
           onClose={() => setModal(null)}
+        />
+      )}
+      {docsOpen && (
+        <DocsModal
+          onClose={() => setDocsOpen(false)}
+          onInsert={(code) => {
+            appendToActiveTab(code)
+            setDocsOpen(false)
+          }}
         />
       )}
     </div>

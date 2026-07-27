@@ -3,9 +3,9 @@ import type { TabRun } from '../App'
 import type { QueryResult } from '../api'
 import { exportResultCsv, exportResultJson, resultToObjects } from '../exportUtils'
 
-export default function ResultsPane({ run }: { run: TabRun }) {
+export default function ResultsPane({ run, height }: { run: TabRun; height: number }) {
   return (
-    <div className="results-pane">
+    <div className="results-pane" style={{ height, flex: 'none' }}>
       {run.status === 'idle' && (
         <div className="results-placeholder">Results will show up here.</div>
       )}

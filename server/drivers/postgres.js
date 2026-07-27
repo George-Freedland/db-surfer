@@ -1,4 +1,5 @@
 import pg from 'pg';
+import { groupColumns } from './util.js';
 
 export async function create(conn, password) {
   const pool = new pg.Pool({
@@ -65,6 +66,16 @@ export async function query(pool, sql, maxRows) {
     rows: (r.rows || []).slice(0, maxRows),
     truncated: (r.rows || []).length > maxRows,
   }));
+}
+
+export async function getCompletion(pool) {
+  const { rows } = await pool.query(`
+    SELECT table_schema AS s, table_name AS t, column_name AS c
+    FROM information_schema.columns
+    WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+    ORDER BY table_schema, table_name, ordinal_position
+  `);
+  return groupColumns(rows);
 }
 
 export function isAuthError(err) {

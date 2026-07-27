@@ -1,4 +1,5 @@
 import sql from 'mssql';
+import { groupColumns } from './util.js';
 
 export async function create(conn, password) {
   const pool = new sql.ConnectionPool({
@@ -74,6 +75,15 @@ export async function query(pool, text, maxRows) {
     rows: recordset.slice(0, maxRows),
     truncated: recordset.length > maxRows,
   }));
+}
+
+export async function getCompletion(pool) {
+  const result = await pool.request().query(`
+    SELECT TABLE_SCHEMA AS s, TABLE_NAME AS t, COLUMN_NAME AS c
+    FROM INFORMATION_SCHEMA.COLUMNS
+    ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION
+  `);
+  return groupColumns(result.recordset);
 }
 
 export function isAuthError(err) {
