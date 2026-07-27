@@ -11,6 +11,7 @@ import ResultsPane from './components/ResultsPane'
 import ConnectionModal from './components/ConnectionModal'
 import PasswordModal from './components/PasswordModal'
 import DocsModal from './components/DocsModal'
+import ExportSettingsModal from './components/ExportSettingsModal'
 import Resizer from './components/Resizer'
 
 export interface Tab {
@@ -64,6 +65,7 @@ export default function App() {
     | { type: 'new-connection' }
     | { type: 'edit-connection'; connection: Connection }
     | { type: 'password'; connection: Connection; error?: string }
+    | { type: 'export-settings' }
     | null
   >(null)
   const [docsOpen, setDocsOpen] = useState(false)
@@ -298,17 +300,9 @@ export default function App() {
     downloadFile(`${activeTab.title || 'script'}.sql`, activeTab.sql, 'application/sql')
   }, [activeTab])
 
-  const exportSettings = useCallback(async () => {
-    const anySaved = connections.some((c) => c.hasSavedPassword)
-    let includePasswords = false
-    if (anySaved) {
-      includePasswords = confirm(
-        'Include saved passwords in the export?\n\nOK = include them (only if sharing privately).\nCancel = export connection settings without passwords (recommended).'
-      )
-    }
-    const data = await api.exportSettings(includePasswords)
-    downloadFile('dbsurfer-connections.json', JSON.stringify(data, null, 2), 'application/json')
-  }, [connections])
+  const exportSettings = useCallback(() => {
+    setModal({ type: 'export-settings' })
+  }, [])
 
   const importSettings = useCallback(
     async (files: FileList | null) => {
@@ -515,6 +509,12 @@ export default function App() {
           connection={modal.connection}
           error={modal.error}
           onSubmit={(password, save) => handleConnect(modal.connection, password, save)}
+          onClose={() => setModal(null)}
+        />
+      )}
+      {modal?.type === 'export-settings' && (
+        <ExportSettingsModal
+          hasSavedPasswords={connections.some((c) => c.hasSavedPassword)}
           onClose={() => setModal(null)}
         />
       )}
