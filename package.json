@@ -1,0 +1,17 @@
+{
+  "name": "db-surfer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DBSurfer — a local, browser-based SQL client for Postgres",
+  "scripts": {
+    "dev": "concurrently -n server,client -c blue,magenta \"npm run dev -w server\" \"npm run dev -w client\"",
+    "start": "npm run dev"
+  },
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

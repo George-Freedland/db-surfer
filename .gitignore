@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Env / secrets — DBSurfer itself stores saved connections & credentials
+# at ~/.dbsurfer/connections.json (outside this repo), but ignore any
+# local env files just in case someone adds one.
+.env
+.env.*
+*.pem
+*.key
+
+# Editor / OS
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Logs
+npm-debug.log*
+*.log
