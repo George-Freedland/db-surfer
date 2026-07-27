@@ -19,10 +19,27 @@ npm install
 npm run dev
 ```
 
-Then open http://localhost:5173.
+Then open http://localhost:5175.
+
+### Desktop launcher (macOS)
+
+For one-click access without opening a terminal, generate double-clickable
+`.app` launchers on your Desktop:
+
+```bash
+scripts/make-desktop-app.sh
+```
+
+This creates **DBSurfer.app** (starts the servers if needed and opens the UI
+in your browser — safe to click repeatedly, it won't spawn duplicates) and
+**Stop DBSurfer.app** (stops them) on your Desktop. Server output is logged
+to `~/.dbsurfer/run/dev.log`.
+
+Re-run this script if you move the repo (the launcher's path is baked in at
+generation time).
 
 - API server: Express + `node-postgres` on port 4400
-- UI: Vite + React + CodeMirror on port 5173 (proxies `/api` to the server)
+- UI: Vite + React + CodeMirror on port 5175 (proxies `/api` to the server)
 
 ## Notes
 
