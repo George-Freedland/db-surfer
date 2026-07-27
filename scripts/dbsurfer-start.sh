@@ -13,12 +13,19 @@ UI_URL="http://localhost:5175"
 
 mkdir -p "$RUN_DIR"
 
-# GUI apps on macOS don't load ~/.zshrc, so node/npm (often installed via nvm)
-# may not be on PATH. Add the common install locations before anything else.
-for dir in "$HOME"/.nvm/versions/node/*/bin /opt/homebrew/bin /usr/local/bin; do
-  [ -d "$dir" ] && PATH="$dir:$PATH"
-done
-export PATH
+# GUI apps on macOS don't load ~/.zshrc, so node/npm may not be on PATH.
+# Prefer nvm's default alias (same node your shell uses — important so native
+# modules built by `npm install` match the runtime), then common locations.
+export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+if [ -s "$NVM_DIR/nvm.sh" ]; then
+  . "$NVM_DIR/nvm.sh" >/dev/null 2>&1 # activates the default alias
+fi
+if ! command -v npm >/dev/null 2>&1; then
+  for dir in /opt/homebrew/bin /usr/local/bin; do
+    [ -d "$dir" ] && PATH="$dir:$PATH"
+  done
+  export PATH
+fi
 
 is_up() {
   curl -fsS -m 2 "$API_URL" >/dev/null 2>&1

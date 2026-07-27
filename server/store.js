@@ -29,14 +29,15 @@ export function getConnection(id) {
   return connections.find((c) => c.id === id);
 }
 
-export function createConnection({ name, host, port, database, user, password, savePassword, color, ssl }) {
+export function createConnection({ name, type, host, port, database, user, password, savePassword, color, ssl }) {
   const conn = {
     id: crypto.randomUUID(),
     name: name || `${host}/${database}`,
+    type: type || 'postgres',
     host: host || 'localhost',
     port: Number(port) || 5432,
-    database: database || 'postgres',
-    user: user || 'postgres',
+    database: database ?? '',
+    user: user ?? '',
     color: color || null,
     ssl: Boolean(ssl),
     createdAt: new Date().toISOString(),
@@ -50,8 +51,9 @@ export function createConnection({ name, host, port, database, user, password, s
 export function updateConnection(id, patch) {
   const conn = getConnection(id);
   if (!conn) return null;
-  const { name, host, port, database, user, password, savePassword, color, ssl } = patch;
+  const { name, type, host, port, database, user, password, savePassword, color, ssl } = patch;
   if (name !== undefined) conn.name = name;
+  if (type !== undefined) conn.type = type;
   if (host !== undefined) conn.host = host;
   if (port !== undefined) conn.port = Number(port) || 5432;
   if (database !== undefined) conn.database = database;

@@ -9,7 +9,12 @@
     "start": "node index.js"
   },
   "dependencies": {
+    "better-sqlite3": "^12.11.1",
     "express": "^4.21.2",
-    "pg": "^8.13.1"
+    "mongodb": "^6.21.0",
+    "mssql": "^12.7.0",
+    "mysql2": "^3.23.2",
+    "pg": "^8.13.1",
+    "redis": "^6.1.0"
   }
 }

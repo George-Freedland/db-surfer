@@ -1,6 +1,8 @@
 import { useCallback, useState } from 'react'
 import { api } from '../api'
 import type { ColumnInfo, Connection, SchemaInfo } from '../api'
+import ContextMenu from './ContextMenu'
+import { genCount, genDelete, genInsert, genSelect, genUpdate } from '../sqlgen'
 
 interface Props {
   connections: Connection[]
@@ -10,7 +12,8 @@ interface Props {
   onDisconnect: (c: Connection) => void
   onClearCredentials: (c: Connection) => void
   onDelete: (c: Connection) => void
-  onOpenTable: (connectionId: string, schema: string, table: string) => void
+  onOpenQueryTab: (connectionId: string, sql: string) => void
+  onAppendSql: (sql: string) => void
   onRefresh: () => void
 }
 
@@ -49,7 +52,8 @@ function ConnectionNode({
   onDisconnect,
   onClearCredentials,
   onDelete,
-  onOpenTable,
+  onOpenQueryTab,
+  onAppendSql,
 }: Props & { conn: Connection }) {
   const [expanded, setExpanded] = useState(false)
   const [schema, setSchema] = useState<SchemaInfo | null>(null)
@@ -95,10 +99,14 @@ function ConnectionNode({
           style={conn.color ? { boxShadow: `0 0 0 2px ${conn.color}44` } : undefined}
           title={conn.connected ? 'Connected' : 'Disconnected'}
         />
-        <button className="conn-name" onClick={toggle} title={`${conn.host}:${conn.port}/${conn.database} as ${conn.user}`}>
+        <button
+          className="conn-name"
+          onClick={toggle}
+          title={`${conn.type} — ${conn.host}:${conn.port}/${conn.database} as ${conn.user}`}
+        >
           {conn.name}
           <span className="conn-detail">
-            {conn.host}:{conn.port}/{conn.database}
+            {conn.type === 'sqlite' ? conn.database : `${conn.host}:${conn.port}/${conn.database}`}
           </span>
         </button>
         <span className="conn-actions">
@@ -140,14 +148,15 @@ function ConnectionNode({
             Object.entries(schema.schemas).map(([schemaName, tables]) => (
               <SchemaNode
                 key={schemaName}
-                connId={conn.id}
+                conn={conn}
                 schemaName={schemaName}
                 tables={tables}
-                onOpenTable={onOpenTable}
+                onOpenQueryTab={onOpenQueryTab}
+                onAppendSql={onAppendSql}
               />
             ))}
           {schema && Object.keys(schema.schemas).length === 0 && (
-            <div className="tree-info">No user tables</div>
+            <div className="tree-info">Nothing to browse</div>
           )}
         </div>
       )}
@@ -156,17 +165,19 @@ function ConnectionNode({
 }
 
 function SchemaNode({
-  connId,
+  conn,
   schemaName,
   tables,
-  onOpenTable,
+  onOpenQueryTab,
+  onAppendSql,
 }: {
-  connId: string
+  conn: Connection
   schemaName: string
   tables: { name: string; kind: string }[]
-  onOpenTable: Props['onOpenTable']
+  onOpenQueryTab: Props['onOpenQueryTab']
+  onAppendSql: Props['onAppendSql']
 }) {
-  const [expanded, setExpanded] = useState(schemaName === 'public')
+  const [expanded, setExpanded] = useState(schemaName === 'public' || schemaName === 'main')
   return (
     <div>
       <div className="tree-row schema-row" onClick={() => setExpanded((e) => !e)}>
@@ -180,10 +191,11 @@ function SchemaNode({
           {tables.map((t) => (
             <TableNode
               key={t.name}
-              connId={connId}
+              conn={conn}
               schemaName={schemaName}
               table={t}
-              onOpenTable={onOpenTable}
+              onOpenQueryTab={onOpenQueryTab}
+              onAppendSql={onAppendSql}
             />
           ))}
         </div>
@@ -192,30 +204,50 @@ function SchemaNode({
   )
 }
 
+const KIND_ICONS: Record<string, string> = {
+  view: '◫',
+  collection: '⬡',
+  key: '⚿',
+}
+
 function TableNode({
-  connId,
+  conn,
   schemaName,
   table,
-  onOpenTable,
+  onOpenQueryTab,
+  onAppendSql,
 }: {
-  connId: string
+  conn: Connection
   schemaName: string
   table: { name: string; kind: string }
-  onOpenTable: Props['onOpenTable']
+  onOpenQueryTab: Props['onOpenQueryTab']
+  onAppendSql: Props['onAppendSql']
 }) {
   const [expanded, setExpanded] = useState(false)
   const [columns, setColumns] = useState<ColumnInfo[] | null>(null)
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
+
+  const fetchColumns = async (): Promise<ColumnInfo[]> => {
+    if (columns) return columns
+    try {
+      const res = await api.columns(conn.id, schemaName, table.name)
+      setColumns(res.columns)
+      return res.columns
+    } catch {
+      return []
+    }
+  }
 
   const toggle = async () => {
     setExpanded((e) => !e)
-    if (!columns) {
-      try {
-        const res = await api.columns(connId, schemaName, table.name)
-        setColumns(res.columns)
-      } catch {
-        setColumns([])
-      }
-    }
+    if (!columns) await fetchColumns()
+  }
+
+  const appendWithColumns = async (
+    gen: (cols: ColumnInfo[]) => string
+  ) => {
+    const cols = await fetchColumns()
+    onAppendSql(gen(cols))
   }
 
   return (
@@ -223,11 +255,15 @@ function TableNode({
       <div
         className="tree-row table-row"
         onClick={toggle}
-        onDoubleClick={() => onOpenTable(connId, schemaName, table.name)}
-        title="Double-click to open a SELECT in a new tab"
+        onDoubleClick={() => onOpenQueryTab(conn.id, genSelect(conn.type, schemaName, table.name))}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          setMenu({ x: e.clientX, y: e.clientY })
+        }}
+        title="Double-click to open a SELECT in a new tab. Right-click for SQL generation."
       >
-        <span className="tree-toggle">{expanded ? '▾' : '▸'}</span>
-        <span className={`tree-icon kind-${table.kind}`}>{table.kind === 'view' ? '◫' : '▦'}</span>
+        <span className={`tree-toggle`}>{expanded ? '▾' : '▸'}</span>
+        <span className={`tree-icon kind-${table.kind}`}>{KIND_ICONS[table.kind] || '▦'}</span>
         {table.name}
       </div>
       {expanded && columns && (
@@ -240,6 +276,42 @@ function TableNode({
             </div>
           ))}
         </div>
+      )}
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          onClose={() => setMenu(null)}
+          items={[
+            {
+              label: 'SELECT everything',
+              onClick: () => onAppendSql(genSelect(conn.type, schemaName, table.name)),
+            },
+            {
+              label: 'COUNT rows',
+              onClick: () => onAppendSql(genCount(conn.type, schemaName, table.name)),
+            },
+            { separator: true, label: '' },
+            {
+              label: 'INSERT with dummy values',
+              onClick: () => appendWithColumns((cols) => genInsert(conn.type, schemaName, table.name, cols)),
+            },
+            {
+              label: 'UPDATE with dummy values',
+              onClick: () => appendWithColumns((cols) => genUpdate(conn.type, schemaName, table.name, cols)),
+            },
+            {
+              label: 'DELETE row',
+              danger: true,
+              onClick: () => appendWithColumns((cols) => genDelete(conn.type, schemaName, table.name, cols)),
+            },
+            { separator: true, label: '' },
+            {
+              label: 'Open SELECT in new tab',
+              onClick: () => onOpenQueryTab(conn.id, genSelect(conn.type, schemaName, table.name)),
+            },
+          ]}
+        />
       )}
     </div>
   )

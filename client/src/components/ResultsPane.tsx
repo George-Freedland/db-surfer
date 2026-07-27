@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import type { TabRun } from '../App'
 import type { QueryResult } from '../api'
+import { exportResultCsv, exportResultJson, resultToObjects } from '../exportUtils'
 
 export default function ResultsPane({ run }: { run: TabRun }) {
   return (
@@ -55,7 +57,9 @@ function ResultBlock({
   total: number
   durationMs?: number
 }) {
+  const [view, setView] = useState<'table' | 'json'>('table')
   const hasRows = result.fields.length > 0
+
   return (
     <div className="result-block">
       <div className="result-meta">
@@ -68,8 +72,38 @@ function ResultBlock({
         </span>
         {durationMs !== undefined && <span>{durationMs} ms</span>}
         {result.truncated && <span className="result-truncated">truncated to first {result.rows.length}</span>}
+        {hasRows && (
+          <span className="result-actions">
+            <span className="view-toggle">
+              <button
+                className={view === 'table' ? 'active' : ''}
+                onClick={() => setView('table')}
+              >
+                Table
+              </button>
+              <button className={view === 'json' ? 'active' : ''} onClick={() => setView('json')}>
+                JSON
+              </button>
+            </span>
+            <button
+              className="mini-button"
+              title="Download as CSV (opens in Excel)"
+              onClick={() => exportResultCsv(result, `result-${index + 1}`)}
+            >
+              ⇩ CSV
+            </button>
+            <button
+              className="mini-button"
+              title="Download as JSON"
+              onClick={() => exportResultJson(result, `result-${index + 1}`)}
+            >
+              ⇩ JSON
+            </button>
+          </span>
+        )}
       </div>
-      {hasRows && (
+
+      {hasRows && view === 'table' && (
         <div className="grid-wrap">
           <table className="grid">
             <thead>
@@ -92,6 +126,10 @@ function ResultBlock({
             </tbody>
           </table>
         </div>
+      )}
+
+      {hasRows && view === 'json' && (
+        <pre className="json-view">{JSON.stringify(resultToObjects(result), null, 2)}</pre>
       )}
     </div>
   )

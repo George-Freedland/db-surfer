@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, ApiError } from './api'
 import type { Connection, ConnectionInput, QueryResponse } from './api'
+import { DB_TYPES } from './dbTypes'
+import { downloadFile } from './exportUtils'
 import Sidebar from './components/Sidebar'
 import TabBar from './components/TabBar'
 import SqlEditor from './components/SqlEditor'
@@ -51,10 +53,11 @@ export default function App() {
   const [modal, setModal] = useState<
     | { type: 'new-connection' }
     | { type: 'edit-connection'; connection: Connection }
-    | { type: 'password'; connection: Connection; error?: string; then?: () => void }
+    | { type: 'password'; connection: Connection; error?: string }
     | null
   >(null)
   const editorRef = useRef<SqlEditorHandle>(null)
+  const importInputRef = useRef<HTMLInputElement>(null)
 
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? tabs[0]
 
@@ -149,23 +152,112 @@ export default function App() {
     setActiveTabId(tab.id)
   }, [tabs.length, activeTab])
 
+  const cleanupRuns = useCallback((keepIds: Set<string>) => {
+    setRuns((prev) => Object.fromEntries(Object.entries(prev).filter(([id]) => keepIds.has(id))))
+  }, [])
+
   const closeTab = useCallback(
     (id: string) => {
       setTabs((prev) => {
         const next = prev.filter((t) => t.id !== id)
-        return next.length > 0 ? next : [newTab(1)]
-      })
-      setRuns((prev) => {
-        const { [id]: _gone, ...rest } = prev
-        return rest
+        const final = next.length > 0 ? next : [newTab(1)]
+        cleanupRuns(new Set(final.map((t) => t.id)))
+        return final
       })
     },
-    []
+    [cleanupRuns]
   )
+
+  const closeOthers = useCallback(
+    (id: string) => {
+      setTabs((prev) => {
+        const keep = prev.filter((t) => t.id === id)
+        const final = keep.length > 0 ? keep : [newTab(1)]
+        cleanupRuns(new Set(final.map((t) => t.id)))
+        return final
+      })
+      setActiveTabId(id)
+    },
+    [cleanupRuns]
+  )
+
+  const closeRight = useCallback(
+    (id: string) => {
+      setTabs((prev) => {
+        const index = prev.findIndex((t) => t.id === id)
+        if (index === -1) return prev
+        const final = prev.slice(0, index + 1)
+        cleanupRuns(new Set(final.map((t) => t.id)))
+        setActiveTabId((current) => (final.some((t) => t.id === current) ? current : id))
+        return final
+      })
+    },
+    [cleanupRuns]
+  )
+
+  const closeAll = useCallback(() => {
+    const fresh = newTab(1)
+    setTabs([fresh])
+    setRuns({})
+    setActiveTabId(fresh.id)
+  }, [])
 
   const updateTab = useCallback((id: string, patch: Partial<Tab>) => {
     setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)))
   }, [])
+
+  // --- SQL generation / import / export ---
+
+  const appendToActiveTab = useCallback(
+    (sql: string) => {
+      if (!activeTab) return
+      const current = activeTab.sql
+      const joined = current.trim() ? `${current.replace(/\s+$/, '')}\n\n${sql}` : sql
+      updateTab(activeTab.id, { sql: joined })
+    },
+    [activeTab, updateTab]
+  )
+
+  const insertQueryTab = useCallback(
+    (connectionId: string, sql: string) => {
+      const tab: Tab = {
+        id: crypto.randomUUID(),
+        title: `Script ${tabs.length + 1}`,
+        sql,
+        connectionId,
+      }
+      setTabs((prev) => [...prev, tab])
+      setActiveTabId(tab.id)
+    },
+    [tabs.length]
+  )
+
+  const importSqlFiles = useCallback(
+    async (files: FileList | null) => {
+      if (!files || files.length === 0) return
+      let lastId = ''
+      const newTabs: Tab[] = []
+      for (const file of Array.from(files)) {
+        const text = await file.text()
+        const tab: Tab = {
+          id: crypto.randomUUID(),
+          title: file.name.replace(/\.(sql|txt)$/i, ''),
+          sql: text,
+          connectionId: activeTab?.connectionId ?? null,
+        }
+        newTabs.push(tab)
+        lastId = tab.id
+      }
+      setTabs((prev) => [...prev, ...newTabs])
+      if (lastId) setActiveTabId(lastId)
+    },
+    [activeTab]
+  )
+
+  const exportSql = useCallback(() => {
+    if (!activeTab) return
+    downloadFile(`${activeTab.title || 'script'}.sql`, activeTab.sql, 'application/sql')
+  }, [activeTab])
 
   // --- query execution ---
 
@@ -219,22 +311,11 @@ export default function App() {
     runSql(selection || activeTab.sql)
   }, [activeTab, runSql])
 
-  const insertQueryTab = useCallback(
-    (connectionId: string, sql: string) => {
-      const tab: Tab = {
-        id: crypto.randomUUID(),
-        title: `Script ${tabs.length + 1}`,
-        sql,
-        connectionId,
-      }
-      setTabs((prev) => [...prev, tab])
-      setActiveTabId(tab.id)
-    },
-    [tabs.length]
-  )
-
   const run = runs[activeTab?.id ?? ''] ?? { status: 'idle' as const }
   const activeConnection = connections.find((c) => c.id === activeTab?.connectionId)
+  const editorHint = activeConnection
+    ? DB_TYPES[activeConnection.type]?.queryHint
+    : DB_TYPES.postgres.queryHint
 
   return (
     <div className="app">
@@ -246,9 +327,8 @@ export default function App() {
         onDisconnect={handleDisconnect}
         onClearCredentials={handleClearCredentials}
         onDelete={handleDelete}
-        onOpenTable={(connId, schema, table) =>
-          insertQueryTab(connId, `SELECT *\nFROM "${schema}"."${table}"\nLIMIT 100;`)
-        }
+        onOpenQueryTab={insertQueryTab}
+        onAppendSql={appendToActiveTab}
         onRefresh={refreshConnections}
       />
       <main className="main">
@@ -257,6 +337,9 @@ export default function App() {
           activeTabId={activeTab?.id ?? ''}
           onSelect={setActiveTabId}
           onClose={closeTab}
+          onCloseOthers={closeOthers}
+          onCloseRight={closeRight}
+          onCloseAll={closeAll}
           onAdd={addTab}
           onRename={(id, title) => updateTab(id, { title })}
         />
@@ -280,7 +363,7 @@ export default function App() {
                 {connections.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.connected ? '● ' : '○ '}
-                    {c.name} ({c.host}:{c.port}/{c.database})
+                    {c.name} ({DB_TYPES[c.type]?.label ?? c.type})
                   </option>
                 ))}
               </select>
@@ -289,6 +372,24 @@ export default function App() {
                   connect
                 </button>
               )}
+              <span className="toolbar-spacer" />
+              <button className="ghost-button small" onClick={() => importInputRef.current?.click()} title="Import .sql files into new tabs">
+                ⇧ Import SQL
+              </button>
+              <button className="ghost-button small" onClick={exportSql} title="Download this tab as a .sql file">
+                ⇩ Export SQL
+              </button>
+              <input
+                ref={importInputRef}
+                type="file"
+                accept=".sql,.txt"
+                multiple
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  importSqlFiles(e.target.files)
+                  e.target.value = ''
+                }}
+              />
               <span className="toolbar-hint">⌘⏎ runs highlighted lines, or the whole script</span>
             </div>
             <div className="editor-wrap">
@@ -298,6 +399,7 @@ export default function App() {
                 value={activeTab.sql}
                 onChange={(sql) => updateTab(activeTab.id, { sql })}
                 onRun={runSelectionOrAll}
+                placeholder={editorHint}
               />
             </div>
             <ResultsPane run={run} />

@@ -1,7 +1,7 @@
-import pg from 'pg';
+import { getDriver } from './drivers/index.js';
 import { getConnection } from './store.js';
 
-const pools = new Map();
+const handles = new Map(); // conn id -> { driver, handle }
 // Passwords provided at connect time but not persisted to disk.
 const sessionPasswords = new Map();
 
@@ -13,48 +13,37 @@ export function hasAnyPassword(conn) {
   return Boolean(conn.password || sessionPasswords.has(conn.id));
 }
 
-export function getPool(id) {
+export async function getHandle(id) {
   const conn = getConnection(id);
   if (!conn) throw Object.assign(new Error('Connection not found'), { status: 404 });
-  let entry = pools.get(id);
+  let entry = handles.get(id);
   if (entry) return entry;
 
+  const driver = getDriver(conn.type);
   const password = conn.password ?? sessionPasswords.get(id) ?? undefined;
-  const pool = new pg.Pool({
-    host: conn.host,
-    port: conn.port,
-    database: conn.database,
-    user: conn.user,
-    password,
-    ssl: conn.ssl ? { rejectUnauthorized: false } : undefined,
-    max: 5,
-    idleTimeoutMillis: 60_000,
-    connectionTimeoutMillis: 8_000,
-    application_name: 'DBSurfer',
-  });
-  pool.on('error', () => {});
-  pools.set(id, pool);
-  return pool;
+  const handle = await driver.create(conn, password);
+  entry = { driver, handle, conn };
+  handles.set(id, entry);
+  return entry;
 }
 
 export async function closePool(id) {
-  const pool = pools.get(id);
-  if (pool) {
-    pools.delete(id);
-    await pool.end().catch(() => {});
+  const entry = handles.get(id);
+  if (entry) {
+    handles.delete(id);
+    await entry.driver.close(entry.handle).catch(() => {});
   }
 }
 
 export function isConnected(id) {
-  return pools.has(id);
+  return handles.has(id);
 }
 
 export function clearSessionPassword(id) {
   sessionPasswords.delete(id);
 }
 
-export function isAuthError(err) {
-  // 28P01 invalid_password, 28000 invalid_authorization_specification
-  if (err.code === '28P01' || err.code === '28000') return true;
+export function isAuthError(conn, err) {
+  if (getDriver(conn?.type).isAuthError(err)) return true;
   return /password/i.test(err.message || '') && /suppl|string|authentication/i.test(err.message || '');
 }

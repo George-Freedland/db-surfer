@@ -14,9 +14,10 @@ interface Props {
   value: string
   onChange: (value: string) => void
   onRun: () => void
+  placeholder?: string
 }
 
-const SqlEditor = forwardRef<SqlEditorHandle, Props>(({ value, onChange, onRun }, ref) => {
+const SqlEditor = forwardRef<SqlEditorHandle, Props>(({ value, onChange, onRun, placeholder }, ref) => {
   const cmRef = useRef<ReactCodeMirrorRef>(null)
   const onRunRef = useRef(onRun)
   onRunRef.current = onRun
@@ -58,7 +59,7 @@ const SqlEditor = forwardRef<SqlEditorHandle, Props>(({ value, onChange, onRun }
         autocompletion: true,
         foldGutter: false,
       }}
-      placeholder="-- Write SQL here. Highlight lines and press ⌘⏎ to run just those."
+      placeholder={placeholder ?? '-- Write SQL here. Highlight lines and press ⌘⏎ to run just those.'}
     />
   )
 })

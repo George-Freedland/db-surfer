@@ -4,13 +4,16 @@ A local, browser-based SQL client for Postgres, like Azure/DBeaver/pgAdmin, but 
 
 ## Features
 
-- Connect to any number of Postgres databases (local Docker, Railway, etc.)
-- Connection details saved to `~/.dbsurfer/connections.json` for fast reconnects
+- Connect to any number of databases: **PostgreSQL, MySQL/MariaDB, SQL Server, SQLite, MongoDB, Redis** (local Docker, Railway, etc.)
+- Connection details saved to `~/.dbsurfer/connections.json` for fast reconnects; paste a connection URL to autofill the form
 - Passwords are optional to save: keep them in memory only (session), or persist them, and clear credentials any time with one click
-- Database browser in the left pane: schemas → tables/views → columns (double-click a table to open a `SELECT` in a new tab)
-- Infinite SQL script tabs (persisted across reloads), each pinned to a connection of your choice
+- Database browser in the left pane: schemas → tables/views/collections/keys → columns (double-click a table to open a `SELECT` in a new tab)
+- Right-click a table for SQL generation: SELECT everything, COUNT, INSERT/UPDATE with dummy values, DELETE — appended to your open tab
+- Infinite SQL script tabs (persisted across reloads), each pinned to a connection of your choice; right-click a tab for close / close others / close all to the right / close all / rename
+- Import `.sql` files into tabs and export any tab back to a `.sql` file
 - Highlight lines and press `⌘⏎` (or hit ▶ Run) to execute just the selection; with no selection the whole script runs
-- Results grid with row counts, timing, multi-statement results, and error position context
+- Results in table or JSON view, exportable as CSV (Excel-friendly) or JSON, with row counts, timing, multi-statement results, and error position context
+- MongoDB tabs take JSON command documents (`{"find": "users", "limit": 100}`); Redis tabs take one command per line
 
 ## Run it
 

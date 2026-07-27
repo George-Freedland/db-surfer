@@ -8,7 +8,7 @@ import {
   clearSavedPassword,
 } from './store.js';
 import {
-  getPool,
+  getHandle,
   closePool,
   isConnected,
   setSessionPassword,
@@ -16,6 +16,7 @@ import {
   hasAnyPassword,
   isAuthError,
 } from './pools.js';
+import { DB_TYPES, isValidType } from './drivers/index.js';
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
@@ -23,33 +24,54 @@ app.use(express.json({ limit: '10mb' }));
 const PORT = process.env.PORT || 4400;
 const MAX_ROWS = 5000;
 
+// AggregateError (e.g. ECONNREFUSED on IPv4+IPv6) often has an empty message
+function errorMessage(err) {
+  if (err.message) return err.message;
+  const inner = err.errors?.find((e) => e.message);
+  if (inner) return inner.message;
+  return err.code || 'Connection failed — is the database reachable?';
+}
+
 function publicConnection(conn) {
   const { password, ...rest } = conn;
   return {
     ...rest,
+    type: conn.type || 'postgres',
     hasSavedPassword: Boolean(password),
     hasPassword: hasAnyPassword(conn),
     connected: isConnected(conn.id),
   };
 }
 
+app.get('/api/db-types', (_req, res) => {
+  res.json(DB_TYPES);
+});
+
 app.get('/api/connections', (_req, res) => {
   res.json(listConnections().map(publicConnection));
 });
 
 app.post('/api/connections', (req, res) => {
-  const conn = createConnection(req.body || {});
-  if (!req.body.savePassword && req.body.password) {
-    setSessionPassword(conn.id, req.body.password);
+  const body = req.body || {};
+  if (body.type && !isValidType(body.type)) {
+    return res.status(400).json({ error: `Unknown database type: ${body.type}` });
+  }
+  const conn = createConnection(body);
+  if (!body.savePassword && body.password) {
+    setSessionPassword(conn.id, body.password);
   }
   res.status(201).json(publicConnection(conn));
 });
 
 app.put('/api/connections/:id', async (req, res) => {
-  const conn = updateConnection(req.params.id, req.body || {});
+  const body = req.body || {};
+  if (body.type && !isValidType(body.type)) {
+    return res.status(400).json({ error: `Unknown database type: ${body.type}` });
+  }
+  const conn = updateConnection(req.params.id, body);
   if (!conn) return res.status(404).json({ error: 'Connection not found' });
-  if (!req.body.savePassword && req.body.password) {
-    setSessionPassword(conn.id, req.body.password);
+  if (!body.savePassword && body.password) {
+    setSessionPassword(conn.id, body.password);
   }
   await closePool(conn.id); // settings changed; force reconnect
   res.json(publicConnection(conn));
@@ -81,15 +103,15 @@ app.post('/api/connections/:id/connect', async (req, res) => {
     else setSessionPassword(conn.id, password);
   }
   try {
-    const pool = getPool(conn.id);
-    const result = await pool.query('SELECT version()');
-    res.json({ ...publicConnection(getConnection(conn.id)), connected: true, serverVersion: result.rows[0].version });
+    const { driver, handle } = await getHandle(conn.id);
+    const serverVersion = await driver.test(handle);
+    res.json({ ...publicConnection(getConnection(conn.id)), connected: true, serverVersion });
   } catch (err) {
     await closePool(conn.id);
-    if (isAuthError(err)) {
-      return res.status(401).json({ error: err.message, code: 'password_required' });
+    if (isAuthError(conn, err)) {
+      return res.status(401).json({ error: errorMessage(err), code: 'password_required' });
     }
-    res.status(502).json({ error: err.message });
+    res.status(502).json({ error: errorMessage(err) });
   }
 });
 
@@ -100,70 +122,43 @@ app.post('/api/connections/:id/disconnect', async (req, res) => {
 
 app.get('/api/connections/:id/schema', async (req, res) => {
   try {
-    const pool = getPool(req.params.id);
-    const { rows } = await pool.query(`
-      SELECT n.nspname AS schema, c.relname AS name, c.relkind AS kind
-      FROM pg_class c
-      JOIN pg_namespace n ON n.oid = c.relnamespace
-      WHERE c.relkind IN ('r', 'v', 'm', 'p', 'f')
-        AND n.nspname NOT IN ('pg_catalog', 'information_schema')
-        AND n.nspname NOT LIKE 'pg_toast%'
-        AND n.nspname NOT LIKE 'pg_temp%'
-      ORDER BY n.nspname, c.relname
-    `);
-    const kindLabel = { r: 'table', p: 'table', v: 'view', m: 'matview', f: 'foreign' };
-    const schemas = {};
-    for (const row of rows) {
-      (schemas[row.schema] ??= []).push({ name: row.name, kind: kindLabel[row.kind] || row.kind });
-    }
-    res.json({ schemas });
+    const { driver, handle } = await getHandle(req.params.id);
+    res.json(await driver.getSchema(handle));
   } catch (err) {
-    handleQueryError(res, err);
+    handleQueryError(req, res, err);
   }
 });
 
 app.get('/api/connections/:id/columns', async (req, res) => {
   const { schema, table } = req.query;
   try {
-    const pool = getPool(req.params.id);
-    const { rows } = await pool.query(
-      `SELECT column_name AS name, data_type AS type, is_nullable = 'YES' AS nullable, column_default AS "default"
-       FROM information_schema.columns
-       WHERE table_schema = $1 AND table_name = $2
-       ORDER BY ordinal_position`,
-      [schema, table]
-    );
-    res.json({ columns: rows });
+    const { driver, handle } = await getHandle(req.params.id);
+    res.json({ columns: await driver.getColumns(handle, schema, table) });
   } catch (err) {
-    handleQueryError(res, err);
+    handleQueryError(req, res, err);
   }
 });
 
 app.post('/api/connections/:id/query', async (req, res) => {
   const { sql } = req.body || {};
-  if (!sql || !sql.trim()) return res.status(400).json({ error: 'No SQL to execute' });
+  if (!sql || !sql.trim()) return res.status(400).json({ error: 'No query to execute' });
   const started = Date.now();
   try {
-    const pool = getPool(req.params.id);
-    const raw = await pool.query({ text: sql, rowMode: 'array' });
-    const results = (Array.isArray(raw) ? raw : [raw]).map((r) => ({
-      command: r.command,
-      rowCount: r.rowCount,
-      fields: (r.fields || []).map((f) => ({ name: f.name, dataTypeID: f.dataTypeID })),
-      rows: (r.rows || []).slice(0, MAX_ROWS),
-      truncated: (r.rows || []).length > MAX_ROWS,
-    }));
+    const { driver, handle } = await getHandle(req.params.id);
+    const results = await driver.query(handle, sql, MAX_ROWS);
     res.json({ results, durationMs: Date.now() - started });
   } catch (err) {
-    handleQueryError(res, err, started);
+    handleQueryError(req, res, err, started);
   }
 });
 
-function handleQueryError(res, err, started) {
-  const status = err.status || (isAuthError(err) ? 401 : 400);
+function handleQueryError(req, res, err, started) {
+  const conn = getConnection(req.params.id);
+  const auth = isAuthError(conn || {}, err);
+  const status = err.status || (auth ? 401 : 400);
   res.status(status).json({
-    error: err.message,
-    code: isAuthError(err) ? 'password_required' : err.code,
+    error: errorMessage(err),
+    code: auth ? 'password_required' : err.code,
     position: err.position ? Number(err.position) : undefined,
     durationMs: started ? Date.now() - started : undefined,
   });

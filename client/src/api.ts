@@ -1,6 +1,9 @@
+export type DbType = 'postgres' | 'mysql' | 'mssql' | 'sqlite' | 'mongodb' | 'redis'
+
 export interface Connection {
   id: string
   name: string
+  type: DbType
   host: string
   port: number
   database: string
@@ -15,6 +18,7 @@ export interface Connection {
 
 export interface ConnectionInput {
   name: string
+  type: DbType
   host: string
   port: number
   database: string

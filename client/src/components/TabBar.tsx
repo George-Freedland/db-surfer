@@ -1,23 +1,46 @@
 import { useState } from 'react'
 import type { Tab } from '../App'
+import ContextMenu from './ContextMenu'
 
 interface Props {
   tabs: Tab[]
   activeTabId: string
   onSelect: (id: string) => void
   onClose: (id: string) => void
+  onCloseOthers: (id: string) => void
+  onCloseRight: (id: string) => void
+  onCloseAll: () => void
   onAdd: () => void
   onRename: (id: string, title: string) => void
 }
 
-export default function TabBar({ tabs, activeTabId, onSelect, onClose, onAdd, onRename }: Props) {
+export default function TabBar({
+  tabs,
+  activeTabId,
+  onSelect,
+  onClose,
+  onCloseOthers,
+  onCloseRight,
+  onCloseAll,
+  onAdd,
+  onRename,
+}: Props) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
+  const [menu, setMenu] = useState<{ x: number; y: number; tabId: string } | null>(null)
 
   const commitRename = () => {
     if (editingId && draft.trim()) onRename(editingId, draft.trim())
     setEditingId(null)
   }
+
+  const startRename = (tab: Tab) => {
+    setEditingId(tab.id)
+    setDraft(tab.title)
+  }
+
+  const menuTab = menu ? tabs.find((t) => t.id === menu.tabId) : null
+  const menuIndex = menuTab ? tabs.indexOf(menuTab) : -1
 
   return (
     <div className="tab-bar">
@@ -26,11 +49,12 @@ export default function TabBar({ tabs, activeTabId, onSelect, onClose, onAdd, on
           key={tab.id}
           className={`tab ${tab.id === activeTabId ? 'active' : ''}`}
           onClick={() => onSelect(tab.id)}
-          onDoubleClick={() => {
-            setEditingId(tab.id)
-            setDraft(tab.title)
-          }}
+          onDoubleClick={() => startRename(tab)}
           onAuxClick={(e) => e.button === 1 && onClose(tab.id)}
+          onContextMenu={(e) => {
+            e.preventDefault()
+            setMenu({ x: e.clientX, y: e.clientY, tabId: tab.id })
+          }}
         >
           {editingId === tab.id ? (
             <input
@@ -65,6 +89,30 @@ export default function TabBar({ tabs, activeTabId, onSelect, onClose, onAdd, on
       <button className="tab-add" title="New script tab" onClick={onAdd}>
         +
       </button>
+
+      {menu && menuTab && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          onClose={() => setMenu(null)}
+          items={[
+            { label: 'Rename', onClick: () => startRename(menuTab) },
+            { separator: true, label: '' },
+            { label: 'Close', onClick: () => onClose(menuTab.id) },
+            {
+              label: 'Close others',
+              disabled: tabs.length <= 1,
+              onClick: () => onCloseOthers(menuTab.id),
+            },
+            {
+              label: 'Close all to the right',
+              disabled: menuIndex === tabs.length - 1,
+              onClick: () => onCloseRight(menuTab.id),
+            },
+            { label: 'Close all', danger: true, onClick: onCloseAll },
+          ]}
+        />
+      )}
     </div>
   )
 }
