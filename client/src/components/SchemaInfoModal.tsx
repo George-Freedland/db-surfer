@@ -48,7 +48,7 @@ export default function SchemaInfoModal({ conn, schemaName, onClose }: Props) {
       <div className="modal table-info-modal">
         <div className="docs-header">
           <h2>
-            {conn.name} — {schemaName}
+            {conn.name}: {schemaName}
           </h2>
           <button className="icon-button" title="Close" onClick={onClose}>
             ✕

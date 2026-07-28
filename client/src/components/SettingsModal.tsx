@@ -22,6 +22,12 @@ export default function SettingsModal({ onClose, onExportSettings, onImportSetti
   const [loadingModels, setLoadingModels] = useState(false)
   const [saving, setSaving] = useState(false)
 
+  // edit-model state for an existing key
+  const [editingKeyId, setEditingKeyId] = useState<string | null>(null)
+  const [editingModels, setEditingModels] = useState<string[] | null>(null)
+  const [editingModel, setEditingModel] = useState('')
+  const [loadingEditModels, setLoadingEditModels] = useState(false)
+
   const refresh = async () => {
     try {
       const c = await api.aiConfig()
@@ -91,6 +97,40 @@ export default function SettingsModal({ onClose, onExportSettings, onImportSetti
     onAiConfigChanged({ ...(config as AiConfig), ...c })
   }
 
+  const startEditModel = async (keyId: string, currentModel: string) => {
+    setEditingKeyId(keyId)
+    setEditingModel(currentModel)
+    setEditingModels(null)
+    setLoadingEditModels(true)
+    setError(null)
+    try {
+      const res = await api.aiListModels({ keyId })
+      const list = res.models.includes(currentModel) ? res.models : [currentModel, ...res.models]
+      setEditingModels(list)
+    } catch (err) {
+      setError(`Could not fetch models: ${(err as Error).message}`)
+      setEditingKeyId(null)
+    } finally {
+      setLoadingEditModels(false)
+    }
+  }
+
+  const saveEditedModel = async () => {
+    if (!editingKeyId || !editingModel) return
+    setSaving(true)
+    setError(null)
+    try {
+      await api.aiUpdateKey(editingKeyId, { model: editingModel })
+      setEditingKeyId(null)
+      setEditingModels(null)
+      await refresh()
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const providerLabel = (p: string) => config?.providers?.[p]?.label ?? p
 
   return (
@@ -120,7 +160,7 @@ export default function SettingsModal({ onClose, onExportSettings, onImportSetti
           </section>
 
           <section>
-            <h3 className="docs-group-title">AI Assist — bring your own key</h3>
+            <h3 className="docs-group-title">AI Assist: bring your own key</h3>
             <p className="settings-hint">
               Add an API key from your provider to enable the AI Assist button. Keys are stored locally in
               ~/.dbsurfer/ai.json and only ever sent to the provider you chose.
@@ -152,7 +192,54 @@ export default function SettingsModal({ onClose, onExportSettings, onImportSetti
                         />
                       </td>
                       <td>{providerLabel(k.provider)}</td>
-                      <td className="info-mono">{k.model}</td>
+                      <td>
+                        {editingKeyId === k.id ? (
+                          <div className="settings-edit-model">
+                            {loadingEditModels || !editingModels ? (
+                              <span className="tree-info">Loading models…</span>
+                            ) : (
+                              <select
+                                className="settings-model-select"
+                                value={editingModel}
+                                onChange={(e) => setEditingModel(e.target.value)}
+                              >
+                                {editingModels.map((m) => (
+                                  <option key={m} value={m}>
+                                    {m}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                            <button
+                              className="mini-button"
+                              disabled={!editingModels || saving}
+                              onClick={saveEditedModel}
+                            >
+                              Save
+                            </button>
+                            <button
+                              className="mini-button"
+                              onClick={() => {
+                                setEditingKeyId(null)
+                                setEditingModels(null)
+                              }}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="settings-model-cell">
+                            <span className="info-mono">{k.model}</span>
+                            <button
+                              className="link-button"
+                              title="Change model"
+                              onClick={() => startEditModel(k.id, k.model)}
+                            >
+                              change
+                            </button>
+                          </span>
+                        )}
+                      </td>
                       <td className="info-mono">{k.keyPreview}</td>
                       <td>
                         <button className="icon-button danger" title="Remove key" onClick={() => removeKey(k.id)}>
@@ -165,7 +252,7 @@ export default function SettingsModal({ onClose, onExportSettings, onImportSetti
               </table>
             )}
             {config && config.keys.length === 0 && !adding && (
-              <div className="tree-info">No keys yet — AI Assist is disabled.</div>
+              <div className="tree-info">No keys yet. AI Assist is disabled.</div>
             )}
 
             {!adding ? (

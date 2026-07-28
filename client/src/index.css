@@ -105,13 +105,9 @@ button {
 }
 
 .conn-row .conn-actions {
-  visibility: hidden;
   display: flex;
   gap: 2px;
-}
-
-.conn-row:hover .conn-actions {
-  visibility: visible;
+  flex-shrink: 0;
 }
 
 .status-dot {
@@ -1121,6 +1117,31 @@ button {
 
 .settings-keys-table {
   margin-bottom: 12px;
+}
+
+.settings-model-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.settings-edit-model {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.settings-model-select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 4px 8px;
+  font-family: var(--mono);
+  font-size: 12px;
+  max-width: 220px;
 }
 
 .ai-assist-button {

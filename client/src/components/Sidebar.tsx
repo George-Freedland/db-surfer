@@ -146,7 +146,7 @@ function ConnectionNode({
         <button
           className="conn-name"
           onClick={toggle}
-          title={`${conn.type} — ${conn.host}:${conn.port}/${conn.database} as ${conn.user}`}
+          title={`${conn.type}: ${conn.host}:${conn.port}/${conn.database} as ${conn.user}`}
         >
           {conn.name}
           <span className="conn-detail">
@@ -198,6 +198,7 @@ function ConnectionNode({
                 procedures={schema.procedures?.[schemaName] || []}
                 onOpenQueryTab={onOpenQueryTab}
                 onAppendSql={onAppendSql}
+                onRefreshSchema={loadSchema}
               />
             ))}
           {schema && Object.keys(schema.schemas).length === 0 && (
@@ -252,6 +253,7 @@ function SchemaNode({
   procedures,
   onOpenQueryTab,
   onAppendSql,
+  onRefreshSchema,
 }: {
   conn: Connection
   schemaName: string
@@ -259,6 +261,7 @@ function SchemaNode({
   procedures: ProcedureInfo[]
   onOpenQueryTab: Props['onOpenQueryTab']
   onAppendSql: Props['onAppendSql']
+  onRefreshSchema: () => void
 }) {
   const [expanded, setExpanded] = useState(schemaName === 'public' || schemaName === 'main')
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
@@ -285,6 +288,7 @@ function SchemaNode({
           onClose={() => setMenu(null)}
           items={[
             { label: 'Get info…', onClick: () => setInfoOpen(true) },
+            { label: 'Refresh', onClick: onRefreshSchema },
             { separator: true, label: '' },
             {
               label: `${createLabel(conn)} in ${schemaName}`,
@@ -659,6 +663,7 @@ function TableNode({
               label: 'Info…',
               onClick: () => setInfoModalOpen(true),
             },
+            { label: 'Refresh', onClick: refreshInfo },
           ]}
         />
       )}
