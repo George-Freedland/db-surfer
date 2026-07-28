@@ -1,30 +1,37 @@
-# DBSurfer
+<p align="center">
+  <img src="client/public/logo.svg" width="72" alt="DBSurfer logo" />
+</p>
 
-A local, browser-based SQL client. Think DBeaver or pgAdmin, but it runs in your browser on your machine.
-<img width="1433" height="698" alt="DBSurfer" src="https://github.com/user-attachments/assets/880f9e2e-9438-471a-894b-d8402cdc4e16" />
+<h1 align="center">DBSurfer</h1>
 
-## Features
+<p align="center"><strong>Open-source, browser-based DBeaver alternative. Multi-DB, local-first.</strong></p>
 
-- Connect to PostgreSQL, MySQL/MariaDB, SQL Server, SQLite, MongoDB, and Redis
-- Save connections locally for fast reconnects (paste a URL to autofill)
-- Optional saved passwords, or session-only, clearable any time
-- Schema browser: tables, columns, indexes, foreign keys, procedures
-- Right-click to generate SELECT / INSERT / UPDATE / DELETE / CREATE / DROP SQL
-- Unlimited SQL tabs, each pinned to a connection
-- Run the highlighted selection (or the whole script) with `⌘⏎`
-- Import/export `.sql` files and connection settings
-- Results as a table or JSON; export CSV or JSON
-- Docs cheat sheet per database type
-- Optional AI Assist (bring your own OpenAI / Anthropic / Google key)
+<p align="center">Connect to Postgres, MySQL, SQL Server, SQLite, MongoDB, and Redis from one clean UI that runs entirely on your machine.</p>
 
-## Run it
+<!-- Record a short GIF (connect to a DB, highlight a query, hit Run) and save it as docs/demo.gif, then uncomment: -->
+<!-- <p align="center"><img src="docs/demo.gif" alt="DBSurfer demo" /></p> -->
+
+![DBSurfer](docs/screenshot.png)
+
+## Install
+
+Works on macOS, Linux, and Windows. Needs [Node.js](https://nodejs.org) 20+.
 
 ```bash
 npm install
-npm run dev
+npm start
 ```
 
-Open http://localhost:5175.
+Open http://localhost:4400 and add your first connection.
+
+### Docker
+
+```bash
+docker build -t dbsurfer .
+docker run -p 4400:4400 -v dbsurfer-data:/root/.dbsurfer dbsurfer
+```
+
+To reach a database running on the Docker host, use `host.docker.internal` instead of `localhost` in the connection form.
 
 ### Desktop launcher (macOS)
 
@@ -34,15 +41,40 @@ scripts/make-desktop-app.sh
 
 Creates **DBSurfer.app** and **Stop DBSurfer.app** on your Desktop. Safe to click repeatedly. Logs go to `~/.dbsurfer/run/dev.log`. Re-run the script if you move the repo.
 
-- API: Express on port 4400
-- UI: Vite + React + CodeMirror on port 5175
+## Features
 
-## Notes
+- Connect to PostgreSQL, MySQL/MariaDB, SQL Server, SQLite, MongoDB, and Redis
+- Save connections locally for fast reconnects (paste a URL to autofill)
+- Optional saved passwords, or session-only, clearable any time
+- Schema browser: tables, columns, indexes, foreign keys, procedures
+- Right-click to generate SELECT / INSERT / UPDATE / DELETE / CREATE / DROP SQL
+- Edit values directly in the results grid and save them as a batch UPDATE
+- Unlimited SQL tabs, each pinned to a connection
+- Run the highlighted selection (or the whole script) with `Cmd/Ctrl + Enter`
+- Import/export `.sql` files and connection settings
+- Results as a table or JSON; export CSV or JSON
+- Docs cheat sheet per database type
+- Optional AI Assist (bring your own OpenAI / Anthropic / Google key)
 
-- Connections (and optional passwords) live in `~/.dbsurfer/connections.json` outside this repo
+## Development
+
+```bash
+npm install
+npm run dev
+```
+
+Runs the API (Express, port 4400) and the UI (Vite + React + CodeMirror, port 5175) with hot reload. Open http://localhost:5175.
+
+## Data and security
+
+- Connections (and optional passwords) live in `~/.dbsurfer/connections.json`, outside this repo
 - AI keys live in `~/.dbsurfer/ai.json`
-- Both files are mode 600 and never leave your machine except when talking to a DB or AI provider you chose
-- Keep it local, or put auth in front before exposing it beyond localhost
+- Both files never leave your machine except when talking to a database or AI provider you chose
+- DBSurfer is local-first by design. Keep it on localhost, or put auth in front before exposing it to a network
+
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and ideas for a first PR.
 
 ## License
 

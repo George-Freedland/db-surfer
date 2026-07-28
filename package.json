@@ -5,7 +5,8 @@
   "description": "DBSurfer — a local, browser-based SQL client for Postgres",
   "scripts": {
     "dev": "concurrently -n server,client -c blue,magenta \"npm run dev -w server\" \"npm run dev -w client\"",
-    "start": "npm run dev"
+    "build": "npm run build -w client",
+    "start": "node scripts/start.js"
   },
   "workspaces": [
     "server",

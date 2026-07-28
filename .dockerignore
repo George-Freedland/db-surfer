@@ -1,0 +1,10 @@
+node_modules
+*/node_modules
+client/dist
+.git
+.gitignore
+*.md
+scripts/*.sh
+scripts/icon.png
+.dockerignore
+Dockerfile

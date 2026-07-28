@@ -1,4 +1,7 @@
 import express from 'express';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import {
   listConnections,
   getConnection,
@@ -316,6 +319,18 @@ function handleQueryError(req, res, err, started) {
   });
 }
 
+// Serve the built UI (client/dist) when it exists, so `npm start` (or Docker)
+// runs the whole app from this one server. In dev, Vite serves the UI instead.
+const CLIENT_DIST = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'client', 'dist');
+const hasUi = fs.existsSync(path.join(CLIENT_DIST, 'index.html'));
+if (hasUi) {
+  app.use(express.static(CLIENT_DIST));
+  app.get('*', (req, res) => {
+    if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'Not found' });
+    res.sendFile(path.join(CLIENT_DIST, 'index.html'));
+  });
+}
+
 app.listen(PORT, () => {
-  console.log(`DBSurfer server listening on http://localhost:${PORT}`);
+  console.log(`DBSurfer server listening on http://localhost:${PORT}${hasUi ? '' : ' (API only - run `npm run dev` for the UI, or `npm run build` first)'}`);
 });
