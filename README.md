@@ -1,7 +1,7 @@
 # DBSurfer
 
 A local, browser-based SQL client. Think DBeaver or pgAdmin, but it runs in your browser on your machine.
-<img width="1433" height="698" alt="DBSurfer" src="https://github.com/user-attachments/assets/dda66b32-0f47-4d3e-9ebb-2d89fdf4953f" />
+<img width="1433" height="698" alt="DBSurfer" src="https://github.com/user-attachments/assets/880f9e2e-9438-471a-894b-d8402cdc4e16" />
 
 ## Features
 
