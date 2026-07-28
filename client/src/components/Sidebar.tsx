@@ -1,8 +1,18 @@
 import { useCallback, useState } from 'react'
 import { api } from '../api'
-import type { ColumnInfo, Connection, SchemaInfo } from '../api'
+import type { ColumnInfo, Connection, ProcedureInfo, SchemaInfo, TableInfo } from '../api'
 import ContextMenu from './ContextMenu'
-import { genCount, genCreateTable, genDelete, genDropTable, genInsert, genSelect, genUpdate } from '../sqlgen'
+import TableInfoModal from './TableInfoModal'
+import {
+  genCallProcedure,
+  genCount,
+  genCreateTable,
+  genDelete,
+  genDropTable,
+  genInsert,
+  genSelect,
+  genUpdate,
+} from '../sqlgen'
 
 function defaultSchema(conn: Connection, schema: SchemaInfo | null): string {
   if (schema) {
@@ -187,6 +197,7 @@ function ConnectionNode({
                 conn={conn}
                 schemaName={schemaName}
                 tables={tables}
+                procedures={schema.procedures?.[schemaName] || []}
                 onOpenQueryTab={onOpenQueryTab}
                 onAppendSql={onAppendSql}
               />
@@ -240,12 +251,14 @@ function SchemaNode({
   conn,
   schemaName,
   tables,
+  procedures,
   onOpenQueryTab,
   onAppendSql,
 }: {
   conn: Connection
   schemaName: string
   tables: { name: string; kind: string }[]
+  procedures: ProcedureInfo[]
   onOpenQueryTab: Props['onOpenQueryTab']
   onAppendSql: Props['onAppendSql']
 }) {
@@ -291,6 +304,56 @@ function SchemaNode({
               onAppendSql={onAppendSql}
             />
           ))}
+          {procedures.length > 0 && (
+            <ProceduresFolder conn={conn} schemaName={schemaName} procedures={procedures} onAppendSql={onAppendSql} />
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const PROC_ICONS: Record<string, string> = {
+  procedure: '⚙',
+  function: 'ƒ',
+  aggregate: 'Σ',
+  window: '▤',
+}
+
+function ProceduresFolder({
+  conn,
+  schemaName,
+  procedures,
+  onAppendSql,
+}: {
+  conn: Connection
+  schemaName: string
+  procedures: ProcedureInfo[]
+  onAppendSql: Props['onAppendSql']
+}) {
+  const [expanded, setExpanded] = useState(false)
+  return (
+    <div>
+      <div className="tree-row schema-row" onClick={() => setExpanded((e) => !e)}>
+        <span className="tree-toggle">{expanded ? '▾' : '▸'}</span>
+        <span className="tree-icon">⚙</span>
+        Procedures
+        <span className="tree-count">{procedures.length}</span>
+      </div>
+      {expanded && (
+        <div className="tree-children">
+          {procedures.map((p) => (
+            <div
+              key={`${p.kind}:${p.name}`}
+              className="tree-row column-row"
+              title={`${p.kind} — click to insert a call template`}
+              onClick={() => onAppendSql(genCallProcedure(conn.type, schemaName, p.name, p.kind))}
+            >
+              <span className="tree-icon">{PROC_ICONS[p.kind] || '⚙'}</span>
+              {p.name}
+              <span className="column-type">{p.kind}</span>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -317,30 +380,32 @@ function TableNode({
   onAppendSql: Props['onAppendSql']
 }) {
   const [expanded, setExpanded] = useState(false)
-  const [columns, setColumns] = useState<ColumnInfo[] | null>(null)
+  const [info, setInfo] = useState<TableInfo | null>(null)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
+  const [indexesOpen, setIndexesOpen] = useState(false)
+  const [fksOpen, setFksOpen] = useState(false)
+  const [infoModalOpen, setInfoModalOpen] = useState(false)
 
-  const fetchColumns = async (): Promise<ColumnInfo[]> => {
-    if (columns) return columns
+  const fetchInfo = async (): Promise<TableInfo> => {
+    if (info) return info
     try {
-      const res = await api.columns(conn.id, schemaName, table.name)
-      setColumns(res.columns)
-      return res.columns
+      const res = await api.tableInfo(conn.id, schemaName, table.name)
+      setInfo(res)
+      return res
     } catch {
-      return []
+      const empty: TableInfo = { columns: [], indexes: [], foreignKeys: [] }
+      return empty
     }
   }
 
   const toggle = async () => {
     setExpanded((e) => !e)
-    if (!columns) await fetchColumns()
+    if (!info) await fetchInfo()
   }
 
-  const appendWithColumns = async (
-    gen: (cols: ColumnInfo[]) => string
-  ) => {
-    const cols = await fetchColumns()
-    onAppendSql(gen(cols))
+  const appendWithColumns = async (gen: (cols: ColumnInfo[]) => string) => {
+    const res = await fetchInfo()
+    onAppendSql(gen(res.columns))
   }
 
   return (
@@ -358,15 +423,73 @@ function TableNode({
         <span className={`tree-icon kind-${table.kind}`}>{KIND_ICONS[table.kind] || '▦'}</span>
         {table.name}
       </div>
-      {expanded && columns && (
+      {expanded && info && (
         <div className="tree-children">
-          {columns.map((c) => (
-            <div key={c.name} className="tree-row column-row" title={`${c.type}${c.nullable ? ', nullable' : ''}`}>
-              <span className="tree-icon">•</span>
+          {info.columns.map((c) => (
+            <div
+              key={c.name}
+              className="tree-row column-row"
+              title={`${c.type}${c.nullable ? ', nullable' : ''}${c.pk ? ', primary key' : ''}`}
+            >
+              <span className="tree-icon">{c.pk ? '🔑' : '•'}</span>
               {c.name}
               <span className="column-type">{c.type}</span>
             </div>
           ))}
+          {info.indexes.length > 0 && (
+            <div>
+              <div className="tree-row schema-row" onClick={() => setIndexesOpen((o) => !o)}>
+                <span className="tree-toggle">{indexesOpen ? '▾' : '▸'}</span>
+                <span className="tree-icon">◆</span>
+                Indexes
+                <span className="tree-count">{info.indexes.length}</span>
+              </div>
+              {indexesOpen && (
+                <div className="tree-children">
+                  {info.indexes.map((idx) => (
+                    <div
+                      key={idx.name}
+                      className="tree-row column-row"
+                      title={`${idx.columns.join(', ')}${idx.method ? ` — ${idx.method}` : ''}`}
+                    >
+                      <span className="tree-icon">{idx.primary ? '🔑' : idx.unique ? '◇' : '◆'}</span>
+                      {idx.name}
+                      <span className="column-type">
+                        {idx.primary ? 'primary' : idx.unique ? 'unique' : idx.clustered ? 'clustered' : 'index'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {info.foreignKeys.length > 0 && (
+            <div>
+              <div className="tree-row schema-row" onClick={() => setFksOpen((o) => !o)}>
+                <span className="tree-toggle">{fksOpen ? '▾' : '▸'}</span>
+                <span className="tree-icon">⛓</span>
+                Foreign keys
+                <span className="tree-count">{info.foreignKeys.length}</span>
+              </div>
+              {fksOpen && (
+                <div className="tree-children">
+                  {info.foreignKeys.map((fk) => (
+                    <div
+                      key={fk.name}
+                      className="tree-row column-row"
+                      title={`${fk.columns.join(', ')} → ${fk.refSchema}.${fk.refTable}(${fk.refColumns.join(', ')})`}
+                    >
+                      <span className="tree-icon">⛓</span>
+                      {fk.columns.join(', ')}
+                      <span className="column-type">
+                        → {fk.refTable}({fk.refColumns.join(', ')})
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
       {menu && (
@@ -407,8 +530,15 @@ function TableNode({
               label: 'Open SELECT in new tab',
               onClick: () => onOpenQueryTab(conn.id, genSelect(conn.type, schemaName, table.name)),
             },
+            {
+              label: 'Info…',
+              onClick: () => setInfoModalOpen(true),
+            },
           ]}
         />
+      )}
+      {infoModalOpen && (
+        <TableInfoModal conn={conn} schemaName={schemaName} table={table} onClose={() => setInfoModalOpen(false)} />
       )}
     </div>
   )

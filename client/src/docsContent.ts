@@ -126,4 +126,5 @@ export const ABOUT = {
     'It is MIT-licensed and open source. Contributions are welcome.',
   ],
   repo: 'https://github.com/George-Freedland/db-surfer',
+  bitcoin: '33tnUt2xyhVEKjQ986dnYcWUujYP9eAHPa',
 }

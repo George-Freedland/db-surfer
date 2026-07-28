@@ -157,6 +157,21 @@ app.get('/api/connections/:id/columns', async (req, res) => {
   }
 });
 
+app.get('/api/connections/:id/table-info', async (req, res) => {
+  const { schema, table } = req.query;
+  try {
+    const { driver, handle } = await getHandle(req.params.id);
+    const [columns, indexes, foreignKeys] = await Promise.all([
+      driver.getColumns(handle, schema, table),
+      driver.getIndexes ? driver.getIndexes(handle, schema, table) : [],
+      driver.getForeignKeys ? driver.getForeignKeys(handle, schema, table) : [],
+    ]);
+    res.json({ columns, indexes, foreignKeys });
+  } catch (err) {
+    handleQueryError(req, res, err);
+  }
+});
+
 app.get('/api/connections/:id/completion', async (req, res) => {
   try {
     const { driver, handle } = await getHandle(req.params.id);

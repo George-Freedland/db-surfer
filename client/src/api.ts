@@ -47,8 +47,14 @@ export interface QueryResponse {
   durationMs: number
 }
 
+export interface ProcedureInfo {
+  name: string
+  kind: string
+}
+
 export interface SchemaInfo {
   schemas: Record<string, { name: string; kind: string }[]>
+  procedures: Record<string, ProcedureInfo[]>
 }
 
 export interface ColumnInfo {
@@ -56,6 +62,33 @@ export interface ColumnInfo {
   type: string
   nullable: boolean
   default: string | null
+  pk?: boolean
+  maxLength?: number | null
+  precision?: number | null
+  scale?: number | null
+}
+
+export interface IndexInfo {
+  name: string
+  unique: boolean
+  primary: boolean
+  clustered?: boolean
+  method?: string
+  columns: string[]
+}
+
+export interface ForeignKeyInfo {
+  name: string
+  columns: string[]
+  refSchema: string
+  refTable: string
+  refColumns: string[]
+}
+
+export interface TableInfo {
+  columns: ColumnInfo[]
+  indexes: IndexInfo[]
+  foreignKeys: ForeignKeyInfo[]
 }
 
 export interface CompletionInfo {
@@ -116,6 +149,10 @@ export const api = {
   columns: (id: string, schema: string, table: string) =>
     request<{ columns: ColumnInfo[] }>(
       `/api/connections/${id}/columns?schema=${encodeURIComponent(schema)}&table=${encodeURIComponent(table)}`
+    ),
+  tableInfo: (id: string, schema: string, table: string) =>
+    request<TableInfo>(
+      `/api/connections/${id}/table-info?schema=${encodeURIComponent(schema)}&table=${encodeURIComponent(table)}`
     ),
   completion: (id: string) => request<CompletionInfo>(`/api/connections/${id}/completion`),
   exportSettings: (includePasswords: boolean) =>

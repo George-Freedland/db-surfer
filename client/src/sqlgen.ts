@@ -115,6 +115,17 @@ export function genCreateTable(type: DbType, schema: string, table = 'new_table'
   }
 }
 
+export function genCallProcedure(type: DbType, schema: string, name: string, kind: string): string {
+  const target = qualify(type, schema, name)
+  if (kind === 'function' || kind === 'aggregate' || kind === 'window') {
+    if (type === 'mssql') return `SELECT * FROM ${target}();`
+    return `SELECT ${target}();`
+  }
+  if (type === 'mssql') return `EXEC ${target};`
+  if (type === 'mysql') return `CALL ${target}();`
+  return `CALL ${target}();`
+}
+
 export function genDropTable(type: DbType, schema: string, table: string): string {
   if (type === 'mongodb') return JSON.stringify({ drop: table }, null, 2)
   if (type === 'redis') return `DEL ${table}`

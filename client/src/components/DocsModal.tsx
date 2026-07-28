@@ -124,6 +124,18 @@ function DocCard({ entry, onInsert }: { entry: DocEntry; onInsert?: (code: strin
 }
 
 function AboutSection() {
+  const [copiedBtc, setCopiedBtc] = useState(false)
+
+  const copyBtc = async () => {
+    try {
+      await navigator.clipboard.writeText(ABOUT.bitcoin)
+      setCopiedBtc(true)
+      setTimeout(() => setCopiedBtc(false), 1500)
+    } catch {
+      /* ignore */
+    }
+  }
+
   return (
     <div className="about-section">
       {ABOUT.paragraphs.map((p, i) => (
@@ -132,6 +144,13 @@ function AboutSection() {
       <a className="about-repo" href={ABOUT.repo} target="_blank" rel="noreferrer">
         {ABOUT.repo}
       </a>
+      <div className="about-donate">
+        <div className="about-donate-label">Support with Bitcoin</div>
+        <code className="about-btc">{ABOUT.bitcoin}</code>
+        <button className="mini-button" onClick={copyBtc}>
+          {copiedBtc ? 'Copied' : 'Copy'}
+        </button>
+      </div>
     </div>
   )
 }

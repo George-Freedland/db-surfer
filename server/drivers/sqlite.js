@@ -22,7 +22,18 @@ export async function getSchema(db) {
        ORDER BY name`
     )
     .all();
-  return { schemas: { main: rows.map((r) => ({ name: r.name, kind: r.type })) } };
+  return { schemas: { main: rows.map((r) => ({ name: r.name, kind: r.type })) }, procedures: {} };
+}
+
+function parseSize(type) {
+  const m = /\((\d+)(?:,\s*(\d+))?\)/.exec(type || '');
+  if (!m) return { maxLength: null, precision: null, scale: null };
+  const isText = /char|text|clob/i.test(type);
+  return {
+    maxLength: isText ? Number(m[1]) : null,
+    precision: !isText ? Number(m[1]) : null,
+    scale: m[2] ? Number(m[2]) : null,
+  };
 }
 
 export async function getColumns(db, _schema, table) {
@@ -32,7 +43,43 @@ export async function getColumns(db, _schema, table) {
     type: r.type || 'any',
     nullable: !r.notnull,
     default: r.dflt_value,
+    pk: Boolean(r.pk),
+    ...parseSize(r.type),
   }));
+}
+
+export async function getIndexes(db, _schema, table) {
+  const escaped = table.replace(/"/g, '""');
+  const list = db.prepare(`PRAGMA index_list("${escaped}")`).all();
+  return list.map((i) => {
+    const cols = db.prepare(`PRAGMA index_info("${i.name.replace(/"/g, '""')}")`).all().map((c) => c.name);
+    return {
+      name: i.name,
+      unique: Boolean(i.unique),
+      primary: i.origin === 'pk',
+      clustered: i.origin === 'pk',
+      method: i.origin === 'pk' ? 'PRIMARY KEY' : i.origin === 'u' ? 'UNIQUE' : 'INDEX',
+      columns: cols,
+    };
+  });
+}
+
+export async function getForeignKeys(db, _schema, table) {
+  const escaped = table.replace(/"/g, '""');
+  const rows = db.prepare(`PRAGMA foreign_key_list("${escaped}")`).all();
+  const byId = {};
+  for (const r of rows) {
+    const fk = (byId[r.id] ??= {
+      name: `fk_${table}_${r.id}`,
+      columns: [],
+      refSchema: 'main',
+      refTable: r.table,
+      refColumns: [],
+    });
+    fk.columns.push(r.from);
+    fk.refColumns.push(r.to);
+  }
+  return Object.values(byId);
 }
 
 // Split a script into statements, respecting quotes and comments.

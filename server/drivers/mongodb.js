@@ -29,6 +29,7 @@ export async function getSchema({ client, dbName }) {
         kind: c.type === 'view' ? 'view' : 'collection',
       })),
     },
+    procedures: {},
   };
 }
 
@@ -38,9 +39,30 @@ export async function getColumns({ client, dbName }, _schema, collection) {
   return Object.entries(doc).map(([name, value]) => ({
     name,
     type: value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value === 'object' ? value.constructor?.name || 'object' : typeof value,
-    nullable: true,
+    nullable: name !== '_id',
     default: null,
+    pk: name === '_id',
   }));
+}
+
+export async function getIndexes({ client, dbName }, _schema, collection) {
+  try {
+    const indexes = await client.db(dbName).collection(collection).indexes();
+    return indexes.map((idx) => ({
+      name: idx.name,
+      unique: Boolean(idx.unique),
+      primary: idx.name === '_id_',
+      clustered: false,
+      method: idx.name === '_id_' ? 'DEFAULT _id INDEX' : Object.values(idx.key).includes('2dsphere') ? 'GEO' : 'BTREE',
+      columns: Object.keys(idx.key),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export async function getForeignKeys() {
+  return [];
 }
 
 // Queries are JSON command documents run against the connection's database,
