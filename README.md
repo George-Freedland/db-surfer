@@ -8,10 +8,7 @@
 
 <p align="center">Connect to Postgres, MySQL, SQL Server, SQLite, MongoDB, and Redis from one clean UI that runs entirely on your machine.</p>
 
-<!-- Record a short GIF (connect to a DB, highlight a query, hit Run) and save it as docs/demo.gif, then uncomment: -->
-<!-- <p align="center"><img src="docs/demo.gif" alt="DBSurfer demo" /></p> -->
-
-![DBSurfer](docs/screenshot.png)
+![DBSurfer demo](docs/demo.gif)
 
 ## Install
 
