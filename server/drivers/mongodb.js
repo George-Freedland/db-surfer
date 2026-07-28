@@ -1,4 +1,5 @@
 import { MongoClient } from 'mongodb';
+import { formatBytes } from './util.js';
 
 export async function create(conn, password) {
   const auth = conn.user
@@ -63,6 +64,43 @@ export async function getIndexes({ client, dbName }, _schema, collection) {
 
 export async function getForeignKeys() {
   return [];
+}
+
+export async function getSchemaInfo({ client, dbName }) {
+  const db = client.db(dbName);
+  const stats = await db.stats().catch(() => null);
+  const info = await client.db('admin').command({ buildInfo: 1 }).catch(() => null);
+  const collections = await db.listCollections().toArray();
+  const tables = [];
+  for (const c of collections) {
+    let rowEstimate = null;
+    let sizeBytes = null;
+    try {
+      const s = await db.command({ collStats: c.name });
+      rowEstimate = s.count ?? null;
+      sizeBytes = (s.size || 0) + (s.totalIndexSize || 0);
+    } catch {
+      /* views have no collStats */
+    }
+    tables.push({ name: c.name, kind: c.type === 'view' ? 'view' : 'collection', rowEstimate, sizeBytes });
+  }
+  tables.sort((a, b) => (b.sizeBytes || 0) - (a.sizeBytes || 0));
+  return {
+    name: dbName,
+    serverVersion: info ? `MongoDB ${info.version}` : 'MongoDB',
+    stats: [
+      ...(stats
+        ? [
+            { label: 'Data size', value: formatBytes(stats.dataSize || 0) },
+            { label: 'Storage size', value: formatBytes(stats.storageSize || 0) },
+            { label: 'Index size', value: formatBytes(stats.indexSize || 0) },
+            { label: 'Documents', value: String(stats.objects ?? '?') },
+          ]
+        : []),
+      { label: 'Collections', value: String(collections.length) },
+    ],
+    tables,
+  };
 }
 
 // Queries are JSON command documents run against the connection's database,

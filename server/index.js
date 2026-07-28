@@ -19,6 +19,16 @@ import {
   isAuthError,
 } from './pools.js';
 import { DB_TYPES, isValidType } from './drivers/index.js';
+import {
+  getAiConfig,
+  addAiKey,
+  deleteAiKey,
+  setActiveAiKey,
+  updateAiKey,
+  getActiveAiKey,
+  getAiKeyById,
+} from './aiStore.js';
+import { AI_PROVIDERS, isValidProvider, listModels, generateSql, buildSystemPrompt } from './ai.js';
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
@@ -179,6 +189,105 @@ app.get('/api/connections/:id/completion', async (req, res) => {
     res.json(await driver.getCompletion(handle));
   } catch (err) {
     handleQueryError(req, res, err);
+  }
+});
+
+app.get('/api/connections/:id/schema-info', async (req, res) => {
+  const { schema } = req.query;
+  try {
+    const { driver, handle } = await getHandle(req.params.id);
+    if (!driver.getSchemaInfo) return res.status(400).json({ error: 'Not supported for this database type' });
+    res.json(await driver.getSchemaInfo(handle, schema));
+  } catch (err) {
+    handleQueryError(req, res, err);
+  }
+});
+
+// --- AI Assist (BYOK) ---
+
+app.get('/api/ai', (_req, res) => {
+  res.json({ ...getAiConfig(), providers: AI_PROVIDERS });
+});
+
+app.post('/api/ai/keys', (req, res) => {
+  const { provider, apiKey, model, label } = req.body || {};
+  if (!isValidProvider(provider)) return res.status(400).json({ error: `Unknown provider: ${provider}` });
+  if (!apiKey || !model) return res.status(400).json({ error: 'apiKey and model are required' });
+  res.status(201).json(addAiKey({ provider, apiKey, model, label }));
+});
+
+app.put('/api/ai/keys/:id', (req, res) => {
+  try {
+    res.json(updateAiKey(req.params.id, req.body || {}));
+  } catch (err) {
+    res.status(404).json({ error: err.message });
+  }
+});
+
+app.delete('/api/ai/keys/:id', (req, res) => {
+  deleteAiKey(req.params.id);
+  res.json({ ok: true });
+});
+
+app.post('/api/ai/active', (req, res) => {
+  try {
+    setActiveAiKey(req.body?.keyId ?? null);
+    res.json(getAiConfig());
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/ai/models', async (req, res) => {
+  const { provider, apiKey, keyId } = req.body || {};
+  try {
+    let p = provider;
+    let k = apiKey;
+    if (keyId) {
+      const stored = getAiKeyById(keyId);
+      if (!stored) return res.status(404).json({ error: 'Key not found' });
+      p = stored.provider;
+      k = stored.apiKey;
+    }
+    if (!isValidProvider(p)) return res.status(400).json({ error: `Unknown provider: ${p}` });
+    if (!k) return res.status(400).json({ error: 'apiKey is required' });
+    res.json({ models: await listModels(p, k) });
+  } catch (err) {
+    res.status(502).json({ error: errorMessage(err) });
+  }
+});
+
+app.post('/api/ai/generate', async (req, res) => {
+  const { connectionId, prompt } = req.body || {};
+  if (!prompt || !prompt.trim()) return res.status(400).json({ error: 'Describe what to generate first' });
+  const key = getActiveAiKey();
+  if (!key) return res.status(400).json({ error: 'No active AI key - add one in Settings' });
+
+  let dbType = 'postgres';
+  let completion = null;
+  if (connectionId) {
+    const conn = getConnection(connectionId);
+    if (conn) dbType = conn.type || 'postgres';
+    try {
+      const { driver, handle } = await getHandle(connectionId);
+      if (driver.getCompletion) completion = await driver.getCompletion(handle);
+    } catch {
+      // not connected - generate without schema context
+    }
+  }
+
+  try {
+    const sql = await generateSql({
+      provider: key.provider,
+      apiKey: key.apiKey,
+      model: key.model,
+      system: buildSystemPrompt(dbType, completion),
+      prompt,
+    });
+    if (!sql) return res.status(502).json({ error: 'The model returned an empty response' });
+    res.json({ sql, provider: key.provider, model: key.model });
+  } catch (err) {
+    res.status(502).json({ error: errorMessage(err) });
   }
 });
 

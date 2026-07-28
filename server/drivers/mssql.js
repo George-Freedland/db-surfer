@@ -1,5 +1,5 @@
 import sql from 'mssql';
-import { groupColumns } from './util.js';
+import { formatBytes, groupColumns } from './util.js';
 
 export async function create(conn, password) {
   const pool = new sql.ConnectionPool({
@@ -108,6 +108,52 @@ export async function getIndexes(pool, schema, table) {
     idx.columns.push(r.col);
   }
   return Object.values(byName);
+}
+
+export async function getSchemaInfo(pool, schema) {
+  const tablesRes = await pool
+    .request()
+    .input('schema', sql.NVarChar, schema)
+    .query(`
+      SELECT t.name AS name, 'table' AS kind, SUM(p.rows) AS rowEstimate,
+             SUM(a.total_pages) * 8192 AS sizeBytes
+      FROM sys.tables t
+      JOIN sys.schemas s ON s.schema_id = t.schema_id
+      JOIN sys.indexes i ON i.object_id = t.object_id AND i.index_id <= 1
+      JOIN sys.partitions p ON p.object_id = t.object_id AND p.index_id = i.index_id
+      JOIN sys.allocation_units a ON a.container_id = p.partition_id
+      WHERE s.name = @schema
+      GROUP BY t.name
+      ORDER BY SUM(a.total_pages) DESC, t.name
+    `);
+  const viewsRes = await pool
+    .request()
+    .input('schema', sql.NVarChar, schema)
+    .query(`
+      SELECT v.name AS name FROM sys.views v
+      JOIN sys.schemas s ON s.schema_id = v.schema_id
+      WHERE s.name = @schema ORDER BY v.name
+    `);
+  const verRes = await pool.request().query('SELECT @@VERSION AS v');
+  const tables = [
+    ...tablesRes.recordset.map((r) => ({
+      name: r.name,
+      kind: 'table',
+      rowEstimate: Number(r.rowEstimate || 0),
+      sizeBytes: Number(r.sizeBytes || 0),
+    })),
+    ...viewsRes.recordset.map((r) => ({ name: r.name, kind: 'view', rowEstimate: null, sizeBytes: null })),
+  ];
+  return {
+    name: schema,
+    serverVersion: String(verRes.recordset[0].v).split('\n')[0].trim(),
+    stats: [
+      { label: 'Schema size', value: formatBytes(tables.reduce((a, t) => a + (t.sizeBytes || 0), 0)) },
+      { label: 'Tables', value: String(tablesRes.recordset.length) },
+      { label: 'Views', value: String(viewsRes.recordset.length) },
+    ],
+    tables,
+  };
 }
 
 export async function getForeignKeys(pool, schema, table) {

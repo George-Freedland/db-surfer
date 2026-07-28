@@ -1,5 +1,5 @@
 import mysql from 'mysql2/promise';
-import { groupColumns } from './util.js';
+import { formatBytes, groupColumns } from './util.js';
 
 export async function create(conn, password) {
   return mysql.createPool({
@@ -85,6 +85,38 @@ export async function getIndexes(pool, schema, table) {
     idx.columns.push(r.col);
   }
   return Object.values(byName);
+}
+
+export async function getSchemaInfo(pool, schema) {
+  const [rows] = await pool.query(
+    `SELECT TABLE_NAME AS name, TABLE_TYPE AS t, TABLE_ROWS AS rowEstimate,
+            (IFNULL(DATA_LENGTH, 0) + IFNULL(INDEX_LENGTH, 0)) AS sizeBytes
+     FROM information_schema.TABLES
+     WHERE TABLE_SCHEMA = ?
+     ORDER BY (IFNULL(DATA_LENGTH, 0) + IFNULL(INDEX_LENGTH, 0)) DESC, TABLE_NAME`,
+    [schema]
+  );
+  const [verRows] = await pool.query('SELECT VERSION() AS v');
+  const [procRows] = await pool.query(
+    'SELECT COUNT(*) AS n FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = ?',
+    [schema]
+  );
+  const tables = rows.map((r) => ({
+    name: r.name,
+    kind: r.t === 'VIEW' ? 'view' : 'table',
+    rowEstimate: r.rowEstimate == null ? null : Number(r.rowEstimate),
+    sizeBytes: Number(r.sizeBytes || 0),
+  }));
+  return {
+    name: schema,
+    serverVersion: `MySQL ${verRows[0].v}`,
+    stats: [
+      { label: 'Schema size', value: formatBytes(tables.reduce((a, t) => a + (t.sizeBytes || 0), 0)) },
+      { label: 'Tables / views', value: String(tables.length) },
+      { label: 'Routines', value: String(procRows[0].n) },
+    ],
+    tables,
+  };
 }
 
 export async function getForeignKeys(pool, schema, table) {

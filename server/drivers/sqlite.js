@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import { formatBytes } from './util.js';
 
 export async function create(conn) {
   if (!conn.database) throw new Error('SQLite connections need a database file path');
@@ -62,6 +63,38 @@ export async function getIndexes(db, _schema, table) {
       columns: cols,
     };
   });
+}
+
+export async function getSchemaInfo(db) {
+  const objects = db
+    .prepare(
+      `SELECT name, type FROM sqlite_master
+       WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' ORDER BY name`
+    )
+    .all();
+  const pageCount = db.pragma('page_count', { simple: true });
+  const pageSize = db.pragma('page_size', { simple: true });
+  const { v } = db.prepare('SELECT sqlite_version() AS v').get();
+  const tables = objects.map((o) => {
+    let rowEstimate = null;
+    if (o.type === 'table') {
+      try {
+        rowEstimate = db.prepare(`SELECT COUNT(*) AS n FROM "${o.name.replace(/"/g, '""')}"`).get().n;
+      } catch {
+        /* virtual tables etc. */
+      }
+    }
+    return { name: o.name, kind: o.type, rowEstimate, sizeBytes: null };
+  });
+  return {
+    name: 'main',
+    serverVersion: `SQLite ${v}`,
+    stats: [
+      { label: 'Database file size', value: formatBytes(pageCount * pageSize) },
+      { label: 'Tables / views', value: String(tables.length) },
+    ],
+    tables,
+  };
 }
 
 export async function getForeignKeys(db, _schema, table) {

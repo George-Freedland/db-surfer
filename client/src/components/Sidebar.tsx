@@ -1,15 +1,21 @@
 import { useCallback, useState } from 'react'
 import { api } from '../api'
-import type { ColumnInfo, Connection, ProcedureInfo, SchemaInfo, TableInfo } from '../api'
+import type { ColumnInfo, Connection, ForeignKeyInfo, IndexInfo, ProcedureInfo, SchemaInfo, TableInfo } from '../api'
 import ContextMenu from './ContextMenu'
 import TableInfoModal from './TableInfoModal'
+import SchemaInfoModal from './SchemaInfoModal'
 import {
+  genAddForeignKey,
   genCallProcedure,
   genCount,
+  genCreateIndex,
   genCreateTable,
   genDelete,
+  genDropForeignKey,
+  genDropIndex,
   genDropTable,
   genInsert,
+  genRecreateIndex,
   genSelect,
   genUpdate,
 } from '../sqlgen'
@@ -43,8 +49,6 @@ interface Props {
   onDelete: (c: Connection) => void
   onOpenQueryTab: (connectionId: string, sql: string) => void
   onAppendSql: (sql: string) => void
-  onExportSettings: () => void
-  onImportSettings: () => void
   onRefresh: () => void
 }
 
@@ -56,12 +60,6 @@ export default function Sidebar(props: Props) {
           <span className="logo-wave">~</span> DBSurfer
         </span>
         <span className="sidebar-header-actions">
-          <button className="icon-button" title="Import connection settings" onClick={props.onImportSettings}>
-            ⇧
-          </button>
-          <button className="icon-button" title="Export connection settings" onClick={props.onExportSettings}>
-            ⇩
-          </button>
           <button className="icon-button" title="New connection" onClick={props.onNewConnection}>
             +
           </button>
@@ -264,6 +262,7 @@ function SchemaNode({
 }) {
   const [expanded, setExpanded] = useState(schemaName === 'public' || schemaName === 'main')
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
+  const [infoOpen, setInfoOpen] = useState(false)
   return (
     <div>
       <div
@@ -285,6 +284,8 @@ function SchemaNode({
           y={menu.y}
           onClose={() => setMenu(null)}
           items={[
+            { label: 'Get info…', onClick: () => setInfoOpen(true) },
+            { separator: true, label: '' },
             {
               label: `${createLabel(conn)} in ${schemaName}`,
               onClick: () => onOpenQueryTab(conn.id, genCreateTable(conn.type, schemaName)),
@@ -292,6 +293,7 @@ function SchemaNode({
           ]}
         />
       )}
+      {infoOpen && <SchemaInfoModal conn={conn} schemaName={schemaName} onClose={() => setInfoOpen(false)} />}
       {expanded && (
         <div className="tree-children">
           {tables.map((t) => (
@@ -385,6 +387,19 @@ function TableNode({
   const [indexesOpen, setIndexesOpen] = useState(false)
   const [fksOpen, setFksOpen] = useState(false)
   const [infoModalOpen, setInfoModalOpen] = useState(false)
+  const [idxMenu, setIdxMenu] = useState<{ x: number; y: number; index: IndexInfo | null } | null>(null)
+  const [fkMenu, setFkMenu] = useState<{ x: number; y: number; fk: ForeignKeyInfo | null } | null>(null)
+
+  const supportsIndexes = conn.type !== 'redis'
+  const supportsFks = ['postgres', 'mysql', 'mssql', 'sqlite'].includes(conn.type)
+
+  const refreshInfo = async () => {
+    try {
+      setInfo(await api.tableInfo(conn.id, schemaName, table.name))
+    } catch {
+      /* keep stale info */
+    }
+  }
 
   const fetchInfo = async (): Promise<TableInfo> => {
     if (info) return info
@@ -436,9 +451,17 @@ function TableNode({
               <span className="column-type">{c.type}</span>
             </div>
           ))}
-          {info.indexes.length > 0 && (
+          {supportsIndexes && (
             <div>
-              <div className="tree-row schema-row" onClick={() => setIndexesOpen((o) => !o)}>
+              <div
+                className="tree-row schema-row"
+                onClick={() => setIndexesOpen((o) => !o)}
+                onContextMenu={(e) => {
+                  e.preventDefault()
+                  setIdxMenu({ x: e.clientX, y: e.clientY, index: null })
+                }}
+                title="Right-click to add an index"
+              >
                 <span className="tree-toggle">{indexesOpen ? '▾' : '▸'}</span>
                 <span className="tree-icon">◆</span>
                 Indexes
@@ -446,11 +469,17 @@ function TableNode({
               </div>
               {indexesOpen && (
                 <div className="tree-children">
+                  {info.indexes.length === 0 && <div className="tree-info">No indexes</div>}
                   {info.indexes.map((idx) => (
                     <div
                       key={idx.name}
                       className="tree-row column-row"
-                      title={`${idx.columns.join(', ')}${idx.method ? ` — ${idx.method}` : ''}`}
+                      onContextMenu={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        setIdxMenu({ x: e.clientX, y: e.clientY, index: idx })
+                      }}
+                      title={`${idx.columns.join(', ')}${idx.method ? ` — ${idx.method}` : ''}. Right-click to manage.`}
                     >
                       <span className="tree-icon">{idx.primary ? '🔑' : idx.unique ? '◇' : '◆'}</span>
                       {idx.name}
@@ -463,9 +492,17 @@ function TableNode({
               )}
             </div>
           )}
-          {info.foreignKeys.length > 0 && (
+          {supportsFks && (
             <div>
-              <div className="tree-row schema-row" onClick={() => setFksOpen((o) => !o)}>
+              <div
+                className="tree-row schema-row"
+                onClick={() => setFksOpen((o) => !o)}
+                onContextMenu={(e) => {
+                  e.preventDefault()
+                  setFkMenu({ x: e.clientX, y: e.clientY, fk: null })
+                }}
+                title="Right-click to add a foreign key"
+              >
                 <span className="tree-toggle">{fksOpen ? '▾' : '▸'}</span>
                 <span className="tree-icon">⛓</span>
                 Foreign keys
@@ -473,11 +510,17 @@ function TableNode({
               </div>
               {fksOpen && (
                 <div className="tree-children">
+                  {info.foreignKeys.length === 0 && <div className="tree-info">No foreign keys</div>}
                   {info.foreignKeys.map((fk) => (
                     <div
                       key={fk.name}
                       className="tree-row column-row"
-                      title={`${fk.columns.join(', ')} → ${fk.refSchema}.${fk.refTable}(${fk.refColumns.join(', ')})`}
+                      onContextMenu={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        setFkMenu({ x: e.clientX, y: e.clientY, fk })
+                      }}
+                      title={`${fk.name}: ${fk.columns.join(', ')} → ${fk.refSchema}.${fk.refTable}(${fk.refColumns.join(', ')}). Right-click to manage.`}
                     >
                       <span className="tree-icon">⛓</span>
                       {fk.columns.join(', ')}
@@ -491,6 +534,88 @@ function TableNode({
             </div>
           )}
         </div>
+      )}
+      {idxMenu && (
+        <ContextMenu
+          x={idxMenu.x}
+          y={idxMenu.y}
+          onClose={() => setIdxMenu(null)}
+          items={
+            idxMenu.index
+              ? [
+                  {
+                    label: 'New index…',
+                    onClick: () =>
+                      onAppendSql(
+                        genCreateIndex(
+                          conn.type,
+                          schemaName,
+                          table.name,
+                          info?.columns.filter((c) => !c.pk).slice(0, 1).map((c) => c.name)
+                        )
+                      ),
+                  },
+                  ...(!idxMenu.index.primary
+                    ? [
+                        {
+                          label: 'Edit index (drop & recreate)',
+                          onClick: () => onAppendSql(genRecreateIndex(conn.type, schemaName, table.name, idxMenu.index!)),
+                        },
+                      ]
+                    : []),
+                  { separator: true, label: '' },
+                  {
+                    label: idxMenu.index.primary ? 'Drop primary key' : 'Drop index',
+                    danger: true,
+                    onClick: () => onAppendSql(genDropIndex(conn.type, schemaName, table.name, idxMenu.index!)),
+                  },
+                ]
+              : [
+                  {
+                    label: 'New index…',
+                    onClick: () =>
+                      onAppendSql(
+                        genCreateIndex(
+                          conn.type,
+                          schemaName,
+                          table.name,
+                          info?.columns.filter((c) => !c.pk).slice(0, 1).map((c) => c.name)
+                        )
+                      ),
+                  },
+                  { label: 'Refresh', onClick: refreshInfo },
+                ]
+          }
+        />
+      )}
+      {fkMenu && (
+        <ContextMenu
+          x={fkMenu.x}
+          y={fkMenu.y}
+          onClose={() => setFkMenu(null)}
+          items={
+            fkMenu.fk
+              ? [
+                  {
+                    label: 'Add foreign key…',
+                    onClick: () => onAppendSql(genAddForeignKey(conn.type, schemaName, table.name)),
+                  },
+                  { separator: true, label: '' },
+                  {
+                    label: 'Drop foreign key',
+                    danger: true,
+                    onClick: () => onAppendSql(genDropForeignKey(conn.type, schemaName, table.name, fkMenu.fk!.name)),
+                  },
+                ]
+              : [
+                  {
+                    label: 'Add foreign key…',
+                    onClick: () => onAppendSql(genAddForeignKey(conn.type, schemaName, table.name)),
+                  },
+                  { label: 'Refresh', onClick: refreshInfo },
+                ]
+          }
+        />
       )}
       {menu && (
         <ContextMenu

@@ -115,6 +115,77 @@ export function genCreateTable(type: DbType, schema: string, table = 'new_table'
   }
 }
 
+export interface IndexLike {
+  name: string
+  unique: boolean
+  primary: boolean
+  columns: string[]
+}
+
+export function genCreateIndex(type: DbType, schema: string, table: string, columns?: string[]): string {
+  const cols = columns && columns.length > 0 ? columns : ['column_name']
+  const idxName = `idx_${table}_${cols.join('_')}`.slice(0, 60)
+  if (type === 'mongodb') {
+    return JSON.stringify(
+      { createIndexes: table, indexes: [{ key: Object.fromEntries(cols.map((c) => [c, 1])), name: idxName }] },
+      null,
+      2
+    )
+  }
+  if (type === 'redis') return '-- Redis has no secondary indexes (see RediSearch module)'
+  const target = qualify(type, schema, table)
+  const colList = cols.map((c) => quoteIdent(type, c)).join(', ')
+  if (type === 'mssql') {
+    return `CREATE NONCLUSTERED INDEX ${quoteIdent(type, idxName)} ON ${target} (${colList});`
+  }
+  return `CREATE INDEX ${quoteIdent(type, idxName)} ON ${target} (${colList});`
+}
+
+export function genDropIndex(type: DbType, schema: string, table: string, index: IndexLike): string {
+  if (type === 'mongodb') return JSON.stringify({ dropIndexes: table, index: index.name }, null, 2)
+  if (type === 'redis') return '-- Redis has no secondary indexes'
+  if (index.primary) {
+    if (type === 'mysql') return `ALTER TABLE ${qualify(type, schema, table)} DROP PRIMARY KEY;`
+    if (type === 'sqlite') return '-- SQLite cannot drop a primary key; recreate the table instead'
+    return `ALTER TABLE ${qualify(type, schema, table)} DROP CONSTRAINT ${quoteIdent(type, index.name)};`
+  }
+  if (type === 'mysql') return `DROP INDEX ${quoteIdent(type, index.name)} ON ${qualify(type, schema, table)};`
+  if (type === 'mssql') return `DROP INDEX ${quoteIdent(type, index.name)} ON ${qualify(type, schema, table)};`
+  if (type === 'sqlite') return `DROP INDEX ${quoteIdent(type, index.name)};`
+  return `DROP INDEX ${quoteIdent(type, schema)}.${quoteIdent(type, index.name)};`
+}
+
+export function genRecreateIndex(type: DbType, schema: string, table: string, index: IndexLike): string {
+  if (type === 'mongodb' || type === 'redis' || index.primary) {
+    return genDropIndex(type, schema, table, index)
+  }
+  const target = qualify(type, schema, table)
+  const colList = index.columns.map((c) => quoteIdent(type, c)).join(', ')
+  const unique = index.unique ? 'UNIQUE ' : ''
+  const create =
+    type === 'mssql' && !index.unique
+      ? `CREATE NONCLUSTERED INDEX ${quoteIdent(type, index.name)} ON ${target} (${colList});`
+      : `CREATE ${unique}INDEX ${quoteIdent(type, index.name)} ON ${target} (${colList});`
+  return `${genDropIndex(type, schema, table, index)}\n${create}`
+}
+
+export function genAddForeignKey(type: DbType, schema: string, table: string): string {
+  if (type === 'mongodb' || type === 'redis') return '-- Foreign keys are not supported by this database'
+  if (type === 'sqlite') {
+    return '-- SQLite cannot add a foreign key to an existing table;\n-- recreate the table with the constraint in CREATE TABLE'
+  }
+  const target = qualify(type, schema, table)
+  const ref = qualify(type, schema, 'other_table')
+  return `ALTER TABLE ${target}\nADD CONSTRAINT ${quoteIdent(type, `fk_${table}_other_table`)}\nFOREIGN KEY (${quoteIdent(type, 'column_name')}) REFERENCES ${ref} (${quoteIdent(type, 'id')});`
+}
+
+export function genDropForeignKey(type: DbType, schema: string, table: string, fkName: string): string {
+  if (type === 'mongodb' || type === 'redis') return '-- Foreign keys are not supported by this database'
+  if (type === 'sqlite') return '-- SQLite cannot drop a foreign key; recreate the table without it'
+  if (type === 'mysql') return `ALTER TABLE ${qualify(type, schema, table)} DROP FOREIGN KEY ${quoteIdent(type, fkName)};`
+  return `ALTER TABLE ${qualify(type, schema, table)} DROP CONSTRAINT ${quoteIdent(type, fkName)};`
+}
+
 export function genCallProcedure(type: DbType, schema: string, name: string, kind: string): string {
   const target = qualify(type, schema, name)
   if (kind === 'function' || kind === 'aggregate' || kind === 'window') {

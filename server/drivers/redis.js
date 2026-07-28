@@ -1,4 +1,5 @@
 import { createClient } from 'redis';
+import { formatBytes } from './util.js';
 
 export async function create(conn, password) {
   const client = createClient({
@@ -84,6 +85,25 @@ export async function getIndexes() {
 
 export async function getForeignKeys() {
   return [];
+}
+
+export async function getSchemaInfo(client) {
+  const total = await client.dbSize();
+  const memInfo = await client.info('memory');
+  const serverInfo = await client.info('server');
+  const used = /used_memory:(\d+)/.exec(memInfo)?.[1];
+  const peak = /used_memory_peak:(\d+)/.exec(memInfo)?.[1];
+  const version = /redis_version:([^\r\n]+)/.exec(serverInfo)?.[1] || '?';
+  return {
+    name: 'keys',
+    serverVersion: `Redis ${version}`,
+    stats: [
+      { label: 'Keys', value: String(total) },
+      ...(used ? [{ label: 'Memory used', value: formatBytes(Number(used)) }] : []),
+      ...(peak ? [{ label: 'Memory peak', value: formatBytes(Number(peak)) }] : []),
+    ],
+    tables: [],
+  };
 }
 
 // Tokenize a Redis command line, honoring quoted strings.

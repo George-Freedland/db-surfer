@@ -97,6 +97,30 @@ export interface CompletionInfo {
   columns: string[]
 }
 
+export interface SchemaStats {
+  name: string
+  serverVersion: string
+  stats: { label: string; value: string }[]
+  tables: { name: string; kind: string; rowEstimate: number | null; sizeBytes: number | null }[]
+}
+
+export type AiProvider = 'openai' | 'anthropic' | 'google'
+
+export interface AiKey {
+  id: string
+  provider: AiProvider
+  model: string
+  label: string
+  keyPreview: string
+  createdAt: string
+}
+
+export interface AiConfig {
+  keys: AiKey[]
+  activeKeyId: string | null
+  providers: Record<string, { label: string }>
+}
+
 export interface ImportResult {
   added: number
   updated: number
@@ -172,5 +196,22 @@ export const api = {
     request<QueryResponse>(`/api/connections/${id}/query`, {
       method: 'POST',
       body: JSON.stringify({ sql }),
+    }),
+  schemaInfo: (id: string, schema: string) =>
+    request<SchemaStats>(`/api/connections/${id}/schema-info?schema=${encodeURIComponent(schema)}`),
+  aiConfig: () => request<AiConfig>('/api/ai'),
+  aiAddKey: (input: { provider: AiProvider; apiKey: string; model: string; label?: string }) =>
+    request<AiKey>('/api/ai/keys', { method: 'POST', body: JSON.stringify(input) }),
+  aiUpdateKey: (id: string, input: { model?: string; label?: string }) =>
+    request<AiKey>(`/api/ai/keys/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
+  aiDeleteKey: (id: string) => request<{ ok: boolean }>(`/api/ai/keys/${id}`, { method: 'DELETE' }),
+  aiSetActive: (keyId: string | null) =>
+    request<AiConfig>('/api/ai/active', { method: 'POST', body: JSON.stringify({ keyId }) }),
+  aiListModels: (input: { provider?: AiProvider; apiKey?: string; keyId?: string }) =>
+    request<{ models: string[] }>('/api/ai/models', { method: 'POST', body: JSON.stringify(input) }),
+  aiGenerate: (connectionId: string | null, prompt: string) =>
+    request<{ sql: string; provider: string; model: string }>('/api/ai/generate', {
+      method: 'POST',
+      body: JSON.stringify({ connectionId, prompt }),
     }),
 }

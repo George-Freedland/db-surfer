@@ -1,5 +1,5 @@
 import pg from 'pg';
-import { groupColumns } from './util.js';
+import { formatBytes, groupColumns } from './util.js';
 
 export async function create(conn, password) {
   const pool = new pg.Pool({
@@ -100,6 +100,45 @@ export async function getIndexes(pool, schema, table) {
     [schema, table]
   );
   return rows;
+}
+
+export async function getSchemaInfo(pool, schema) {
+  const { rows } = await pool.query(
+    `SELECT c.relname AS name,
+            CASE c.relkind WHEN 'v' THEN 'view' WHEN 'm' THEN 'matview' WHEN 'f' THEN 'foreign' ELSE 'table' END AS kind,
+            CASE WHEN c.reltuples < 0 THEN NULL ELSE c.reltuples::bigint END AS "rowEstimate",
+            pg_total_relation_size(c.oid) AS "sizeBytes"
+     FROM pg_class c
+     JOIN pg_namespace n ON n.oid = c.relnamespace
+     WHERE n.nspname = $1 AND c.relkind IN ('r', 'v', 'm', 'p', 'f')
+     ORDER BY pg_total_relation_size(c.oid) DESC, c.relname`,
+    [schema]
+  );
+  const meta = await pool.query(
+    `SELECT current_database() AS db, version() AS version,
+            pg_database_size(current_database()) AS "dbSize",
+            (SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = $1) AS procs`,
+    [schema]
+  );
+  const m = meta.rows[0];
+  const tables = rows.map((r) => ({
+    name: r.name,
+    kind: r.kind,
+    rowEstimate: r.kind === 'table' && r.rowEstimate != null ? Number(r.rowEstimate) : null,
+    sizeBytes: Number(r.sizeBytes),
+  }));
+  return {
+    name: schema,
+    serverVersion: m.version,
+    stats: [
+      { label: 'Database', value: m.db },
+      { label: 'Database size', value: formatBytes(Number(m.dbSize)) },
+      { label: 'Schema size', value: formatBytes(tables.reduce((a, t) => a + (t.sizeBytes || 0), 0)) },
+      { label: 'Tables / views', value: String(tables.length) },
+      { label: 'Functions / procedures', value: String(m.procs) },
+    ],
+    tables,
+  };
 }
 
 export async function getForeignKeys(pool, schema, table) {

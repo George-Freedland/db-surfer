@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, ApiError } from './api'
-import type { CompletionInfo, Connection, ConnectionInput, QueryResponse } from './api'
+import type { AiConfig, CompletionInfo, Connection, ConnectionInput, QueryResponse } from './api'
 import { DB_TYPES } from './dbTypes'
 import { downloadFile } from './exportUtils'
 import Sidebar from './components/Sidebar'
@@ -12,6 +12,8 @@ import ConnectionModal from './components/ConnectionModal'
 import PasswordModal from './components/PasswordModal'
 import DocsModal from './components/DocsModal'
 import ExportSettingsModal from './components/ExportSettingsModal'
+import SettingsModal from './components/SettingsModal'
+import AiAssistModal from './components/AiAssistModal'
 import Resizer from './components/Resizer'
 
 export interface Tab {
@@ -69,6 +71,9 @@ export default function App() {
     | null
   >(null)
   const [docsOpen, setDocsOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [aiOpen, setAiOpen] = useState(false)
+  const [aiConfig, setAiConfig] = useState<AiConfig | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(() => loadNumber(SIDEBAR_W_KEY, 290))
   const [resultsHeight, setResultsHeight] = useState(() => loadNumber(RESULTS_H_KEY, 280))
   const [completions, setCompletions] = useState<Record<string, CompletionInfo>>({})
@@ -101,6 +106,7 @@ export default function App() {
 
   useEffect(() => {
     refreshConnections()
+    api.aiConfig().then(setAiConfig).catch(() => {})
   }, [refreshConnections])
 
   const activeConnection = connections.find((c) => c.id === activeTab?.connectionId)
@@ -374,6 +380,8 @@ export default function App() {
     runSql(selection || activeTab.sql)
   }, [activeTab, runSql])
 
+  const activeAiKey = aiConfig?.keys.find((k) => k.id === aiConfig.activeKeyId) ?? null
+
   const run = runs[activeTab?.id ?? ''] ?? { status: 'idle' as const }
   const editorHint = activeConnection
     ? DB_TYPES[activeConnection.type]?.queryHint
@@ -392,8 +400,6 @@ export default function App() {
         onDelete={handleDelete}
         onOpenQueryTab={insertQueryTab}
         onAppendSql={appendToActiveTab}
-        onExportSettings={exportSettings}
-        onImportSettings={() => settingsInputRef.current?.click()}
         onRefresh={refreshConnections}
       />
       <Resizer
@@ -412,6 +418,7 @@ export default function App() {
           onAdd={addTab}
           onRename={(id, title) => updateTab(id, { title })}
           onOpenDocs={() => setDocsOpen(true)}
+          onOpenSettings={() => setSettingsOpen(true)}
         />
         {activeTab && (
           <>
@@ -442,6 +449,18 @@ export default function App() {
                   connect
                 </button>
               )}
+              <button
+                className="ai-assist-button"
+                disabled={!activeAiKey}
+                onClick={() => setAiOpen(true)}
+                title={
+                  activeAiKey
+                    ? `Generate a query with ${activeAiKey.model}`
+                    : 'Add an API key in Settings (⚙) to enable AI Assist'
+                }
+              >
+                ✨ AI Assist
+              </button>
               <span className="toolbar-spacer" />
               <button className="ghost-button small" onClick={() => importInputRef.current?.click()} title="Import .sql files into new tabs">
                 ⇧ Import SQL
@@ -512,12 +531,6 @@ export default function App() {
           onClose={() => setModal(null)}
         />
       )}
-      {modal?.type === 'export-settings' && (
-        <ExportSettingsModal
-          hasSavedPasswords={connections.some((c) => c.hasSavedPassword)}
-          onClose={() => setModal(null)}
-        />
-      )}
       {docsOpen && (
         <DocsModal
           onClose={() => setDocsOpen(false)}
@@ -525,6 +538,32 @@ export default function App() {
             appendToActiveTab(code)
             setDocsOpen(false)
           }}
+        />
+      )}
+      {settingsOpen && (
+        <SettingsModal
+          onClose={() => setSettingsOpen(false)}
+          onExportSettings={exportSettings}
+          onImportSettings={() => settingsInputRef.current?.click()}
+          onAiConfigChanged={setAiConfig}
+        />
+      )}
+      {modal?.type === 'export-settings' && (
+        <ExportSettingsModal
+          hasSavedPasswords={connections.some((c) => c.hasSavedPassword)}
+          onClose={() => setModal(null)}
+        />
+      )}
+      {aiOpen && activeAiKey && (
+        <AiAssistModal
+          connectionId={activeTab?.connectionId ?? null}
+          connectionName={activeConnection?.name}
+          modelLabel={`${activeAiKey.provider} · ${activeAiKey.model}`}
+          onInsert={(sql) => {
+            appendToActiveTab(sql)
+            setAiOpen(false)
+          }}
+          onClose={() => setAiOpen(false)}
         />
       )}
     </div>

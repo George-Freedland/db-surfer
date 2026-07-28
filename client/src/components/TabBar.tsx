@@ -13,6 +13,7 @@ interface Props {
   onAdd: () => void
   onRename: (id: string, title: string) => void
   onOpenDocs: () => void
+  onOpenSettings: () => void
 }
 
 export default function TabBar({
@@ -26,6 +27,7 @@ export default function TabBar({
   onAdd,
   onRename,
   onOpenDocs,
+  onOpenSettings,
 }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
@@ -90,6 +92,9 @@ export default function TabBar({
       ))}
       <button className="tab-add" title="New script tab" onClick={onAdd}>
         +
+      </button>
+      <button className="docs-button settings-button" title="Settings — connections import/export, AI keys" onClick={onOpenSettings}>
+        ⚙
       </button>
       <button className="docs-button" title="Docs & cheat sheet" onClick={onOpenDocs}>
         ? Docs
