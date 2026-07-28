@@ -12,31 +12,53 @@
 
 ## Install
 
-Works on macOS, Linux, and Windows. Needs [Node.js](https://nodejs.org) 20+.
+Works on macOS, Linux, and Windows. Needs [Node.js](https://nodejs.org) 20+. There is no installer `.exe` or `.dmg` yet. DBSurfer is a local Node server plus a browser UI.
+
+### macOS / Linux
 
 ```bash
+git clone https://github.com/George-Freedland/db-surfer.git
+cd db-surfer
 npm install
 npm start
 ```
 
-Open http://localhost:4400 and add your first connection.
+Open http://localhost:4400
 
-### Docker
+### Windows
 
-```bash
-docker build -t dbsurfer .
-docker run -p 4400:4400 -v dbsurfer-data:/root/.dbsurfer dbsurfer
+Same commands in PowerShell or Command Prompt (Node.js 20+ installed):
+
+```powershell
+git clone https://github.com/George-Freedland/db-surfer.git
+cd db-surfer
+npm install
+npm start
 ```
 
-To reach a database running on the Docker host, use `host.docker.internal` instead of `localhost` in the connection form.
+Open http://localhost:4400 in your browser. Connection data is stored under `%USERPROFILE%\.dbsurfer\`.
 
-### Desktop launcher (macOS)
+### One-liner (Docker)
+
+Closest thing to a single command today:
+
+```bash
+docker build -t dbsurfer . && docker run -p 4400:4400 -v dbsurfer-data:/root/.dbsurfer dbsurfer
+```
+
+To reach a database on the Docker host, use `host.docker.internal` instead of `localhost` in the connection form.
+
+`npx dbsurfer` is not published yet. That needs an npm package release.
+
+### Desktop launcher (macOS only)
 
 ```bash
 scripts/make-desktop-app.sh
 ```
 
 Creates **DBSurfer.app** and **Stop DBSurfer.app** on your Desktop. Safe to click repeatedly. Logs go to `~/.dbsurfer/run/dev.log`. Re-run the script if you move the repo.
+
+Windows/Linux desktop shortcuts are not built yet. Use `npm start` or Docker.
 
 ## Features
 
