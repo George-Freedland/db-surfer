@@ -50,6 +50,8 @@ interface Props {
   onOpenQueryTab: (connectionId: string, sql: string) => void
   onAppendSql: (sql: string) => void
   onRefresh: () => void
+  /** False until the first connection list fetch resolves (cached list may already be shown). */
+  loaded: boolean
 }
 
 export default function Sidebar(props: Props) {
@@ -66,14 +68,19 @@ export default function Sidebar(props: Props) {
         </span>
       </div>
       <div className="sidebar-body">
-        {props.connections.length === 0 && (
-          <div className="sidebar-empty">
-            <p>No connections yet.</p>
-            <button className="primary-button" onClick={props.onNewConnection}>
-              Add a database
-            </button>
-          </div>
-        )}
+        {props.connections.length === 0 &&
+          (props.loaded ? (
+            <div className="sidebar-empty">
+              <p>No connections yet.</p>
+              <button className="primary-button" onClick={props.onNewConnection}>
+                Add a database
+              </button>
+            </div>
+          ) : (
+            <div className="sidebar-empty sidebar-loading">
+              <p>Loading connections…</p>
+            </div>
+          ))}
         {props.connections.map((conn) => (
           <ConnectionNode key={conn.id} conn={conn} {...props} />
         ))}

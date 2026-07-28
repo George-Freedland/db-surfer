@@ -37,6 +37,18 @@ const TABS_KEY = 'dbsurfer.tabs'
 const ACTIVE_KEY = 'dbsurfer.activeTab'
 const SIDEBAR_W_KEY = 'dbsurfer.sidebarWidth'
 const RESULTS_H_KEY = 'dbsurfer.resultsHeight'
+const CONN_CACHE_KEY = 'dbsurfer.connectionsCache'
+
+// Hydrate from the last-known connection list (metadata only, no passwords)
+// so a page refresh doesn't flash the empty state while the fetch is in flight.
+function loadCachedConnections(): Connection[] {
+  try {
+    const cached = JSON.parse(localStorage.getItem(CONN_CACHE_KEY) || '')
+    return Array.isArray(cached) ? cached : []
+  } catch {
+    return []
+  }
+}
 
 function loadNumber(key: string, fallback: number) {
   const v = Number(localStorage.getItem(key))
@@ -59,7 +71,8 @@ function loadTabs(): Tab[] {
 }
 
 export default function App() {
-  const [connections, setConnections] = useState<Connection[]>([])
+  const [connections, setConnections] = useState<Connection[]>(loadCachedConnections)
+  const [connectionsLoaded, setConnectionsLoaded] = useState(false)
   const [tabs, setTabs] = useState<Tab[]>(loadTabs)
   const [activeTabId, setActiveTabId] = useState<string>(
     () => localStorage.getItem(ACTIVE_KEY) || ''
@@ -101,7 +114,10 @@ export default function App() {
 
   const refreshConnections = useCallback(async () => {
     try {
-      setConnections(await api.listConnections())
+      const list = await api.listConnections()
+      setConnections(list)
+      setConnectionsLoaded(true)
+      localStorage.setItem(CONN_CACHE_KEY, JSON.stringify(list))
     } catch {
       /* server not up yet */
     }
@@ -446,6 +462,7 @@ export default function App() {
         onOpenQueryTab={insertQueryTab}
         onAppendSql={appendToActiveTab}
         onRefresh={refreshConnections}
+        loaded={connectionsLoaded}
       />
       <Resizer
         orientation="vertical"
