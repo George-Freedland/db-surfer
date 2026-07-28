@@ -1233,6 +1233,130 @@ button {
   margin-left: 0;
 }
 
+.logo-img {
+  width: 20px;
+  height: 20px;
+  vertical-align: -4px;
+  margin-right: 2px;
+}
+
+.result-editable-hint {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.grid td.cell-editable {
+  cursor: text;
+}
+
+.grid td.cell-edited {
+  background: rgba(250, 204, 21, 0.12);
+  color: var(--yellow);
+  font-weight: 600;
+}
+
+.grid td.cell-editing {
+  padding: 0;
+}
+
+.cell-input {
+  width: 100%;
+  min-width: 120px;
+  box-sizing: border-box;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  color: var(--text);
+  padding: 4px 8px;
+  font: inherit;
+}
+
+.cell-input:focus {
+  outline: none;
+}
+
+.edits-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  background: rgba(250, 204, 21, 0.07);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.edits-count {
+  color: var(--yellow);
+  font-weight: 600;
+}
+
+.edits-error {
+  color: var(--red);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.edits-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.save-button {
+  padding: 4px 14px;
+  background: var(--green);
+  border-radius: 6px;
+  color: #0c2818;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.save-button:disabled {
+  opacity: 0.6;
+}
+
+.pk-badge {
+  margin-left: 4px;
+  font-size: 9px;
+}
+
+.batch-modal {
+  width: 640px;
+  max-width: 94vw;
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+}
+
+.batch-body {
+  padding: 14px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.batch-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 200px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 12px;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.batch-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
 .danger-outline-button {
   padding: 7px 16px;
   border: 1px solid var(--red);

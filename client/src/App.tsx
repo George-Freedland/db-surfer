@@ -8,6 +8,8 @@ import TabBar from './components/TabBar'
 import SqlEditor from './components/SqlEditor'
 import type { SqlEditorHandle } from './components/SqlEditor'
 import ResultsPane from './components/ResultsPane'
+import type { EditContext } from './components/ResultsPane'
+import { parseSimpleSelect } from './sqlgen'
 import ConnectionModal from './components/ConnectionModal'
 import PasswordModal from './components/PasswordModal'
 import DocsModal from './components/DocsModal'
@@ -77,6 +79,7 @@ export default function App() {
   const [sidebarWidth, setSidebarWidth] = useState(() => loadNumber(SIDEBAR_W_KEY, 290))
   const [resultsHeight, setResultsHeight] = useState(() => loadNumber(RESULTS_H_KEY, 280))
   const [completions, setCompletions] = useState<Record<string, CompletionInfo>>({})
+  const [editCtxs, setEditCtxs] = useState<Record<string, EditContext | null>>({})
   const editorRef = useRef<SqlEditorHandle>(null)
   const importInputRef = useRef<HTMLInputElement>(null)
   const settingsInputRef = useRef<HTMLInputElement>(null)
@@ -330,6 +333,35 @@ export default function App() {
 
   // --- query execution ---
 
+  // Results from a plain single-table SELECT can be edited in place; we need
+  // the table's primary key to generate the batch UPDATEs.
+  const computeEditContext = useCallback(
+    async (connId: string, sql: string): Promise<EditContext | null> => {
+      const conn = connections.find((c) => c.id === connId)
+      if (!conn || !['postgres', 'mysql', 'mssql', 'sqlite'].includes(conn.type)) return null
+      const parsed = parseSimpleSelect(sql)
+      if (!parsed) return null
+      const schema =
+        parsed.schema ??
+        (conn.type === 'mssql'
+          ? 'dbo'
+          : conn.type === 'mysql'
+            ? conn.database
+            : conn.type === 'sqlite'
+              ? 'main'
+              : 'public')
+      try {
+        const info = await api.tableInfo(connId, schema, parsed.table)
+        const pkColumns = info.columns.filter((c) => c.pk).map((c) => c.name)
+        if (pkColumns.length === 0) return null
+        return { dbType: conn.type, schema, table: parsed.table, pkColumns }
+      } catch {
+        return null
+      }
+    },
+    [connections]
+  )
+
   const runSql = useCallback(
     async (sql: string) => {
       if (!activeTab) return
@@ -348,6 +380,9 @@ export default function App() {
         const response = await api.query(connId, sql)
         setRuns((prev) => ({ ...prev, [tabId]: { status: 'done', response, ranSql: sql } }))
         refreshConnections()
+        computeEditContext(connId, sql).then((ctx) =>
+          setEditCtxs((prev) => ({ ...prev, [tabId]: ctx }))
+        )
       } catch (err) {
         if (err instanceof ApiError && err.code === 'password_required') {
           const conn = connections.find((c) => c.id === connId)
@@ -370,7 +405,17 @@ export default function App() {
         }))
       }
     },
-    [activeTab, connections, refreshConnections]
+    [activeTab, connections, refreshConnections, computeEditContext]
+  )
+
+  const applyBatch = useCallback(
+    async (batchSql: string) => {
+      if (!activeTab?.connectionId) throw new Error('No connection selected')
+      await api.query(activeTab.connectionId, batchSql)
+      const ranSql = runs[activeTab.id]?.ranSql
+      if (ranSql) await runSql(ranSql)
+    },
+    [activeTab, runs, runSql]
   )
 
   const runSelectionOrAll = useCallback(() => {
@@ -497,7 +542,12 @@ export default function App() {
               orientation="horizontal"
               onDrag={(e) => setResultsHeight(clamp(window.innerHeight - e.clientY, 120, window.innerHeight - 240))}
             />
-            <ResultsPane run={run} height={resultsHeight} />
+            <ResultsPane
+              run={run}
+              height={resultsHeight}
+              editContext={editCtxs[activeTab.id] ?? null}
+              onApplyBatch={applyBatch}
+            />
           </>
         )}
       </main>

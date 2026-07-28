@@ -57,7 +57,7 @@ export default function Sidebar(props: Props) {
     <aside className="sidebar" style={{ width: props.width }}>
       <div className="sidebar-header">
         <span className="logo">
-          <span className="logo-wave">~</span> DBSurfer
+          <img src="/logo.svg" className="logo-img" alt="" /> DBSurfer
         </span>
         <span className="sidebar-header-actions">
           <button className="icon-button" title="New connection" onClick={props.onNewConnection}>

@@ -115,6 +115,54 @@ export function genCreateTable(type: DbType, schema: string, table = 'new_table'
   }
 }
 
+// --- editable results support ---
+
+const IDENT = '(?:"[^"]+"|`[^`]+`|\\[[^\\]]+\\]|[A-Za-z_][\\w$]*)'
+const FROM_RE = new RegExp(`\\bfrom\\s+(${IDENT})(?:\\s*\\.\\s*(${IDENT}))?`, 'i')
+
+function unquotePart(part: string): string {
+  if (/^".*"$/.test(part)) return part.slice(1, -1).replace(/""/g, '"')
+  if (/^`.*`$/.test(part)) return part.slice(1, -1).replace(/``/g, '`')
+  if (/^\[.*\]$/.test(part)) return part.slice(1, -1).replace(/]]/g, ']')
+  return part
+}
+
+// Detects a plain single-table SELECT so its results can be edited in place.
+export function parseSimpleSelect(sql: string): { schema: string | null; table: string } | null {
+  const s = sql.trim().replace(/;\s*$/, '')
+  if (!/^select\s/i.test(s)) return null
+  if (s.includes(';')) return null // multiple statements
+  if (/\b(join|union|group\s+by|distinct|having)\b/i.test(s)) return null
+  if ((s.match(/\bselect\b/gi) || []).length !== 1) return null // subqueries
+  const m = FROM_RE.exec(s)
+  if (!m) return null
+  if (m[2]) return { schema: unquotePart(m[1]), table: unquotePart(m[2]) }
+  return { schema: null, table: unquotePart(m[1]) }
+}
+
+// Literal for an original JS value coming back from the driver (used in WHERE).
+export function valueLiteral(type: DbType, value: unknown): string {
+  if (value === null || value === undefined) return 'NULL'
+  if (typeof value === 'number') return String(value)
+  if (typeof value === 'boolean') {
+    if (type === 'postgres') return value ? 'true' : 'false'
+    return value ? '1' : '0'
+  }
+  const text = typeof value === 'object' ? JSON.stringify(value) : String(value)
+  return `'${text.replace(/'/g, "''")}'`
+}
+
+// Literal for text the user typed into a cell. NULL / TRUE / FALSE / numbers
+// are treated as such; everything else becomes a quoted string.
+export function textLiteral(type: DbType, text: string): string {
+  const t = text.trim()
+  if (/^null$/i.test(t)) return 'NULL'
+  if (/^true$/i.test(t)) return type === 'postgres' ? 'true' : '1'
+  if (/^false$/i.test(t)) return type === 'postgres' ? 'false' : '0'
+  if (/^-?\d+(\.\d+)?$/.test(t)) return t
+  return `'${text.replace(/'/g, "''")}'`
+}
+
 export interface IndexLike {
   name: string
   unique: boolean
