@@ -179,9 +179,9 @@ export const api = {
       `/api/connections/${id}/table-info?schema=${encodeURIComponent(schema)}&table=${encodeURIComponent(table)}`
     ),
   completion: (id: string) => request<CompletionInfo>(`/api/connections/${id}/completion`),
-  exportSettings: (includePasswords: boolean) =>
+  exportSettings: (includePasswords: boolean, id?: string) =>
     request<{ connections: unknown[] }>(
-      `/api/connections/export${includePasswords ? '?includePasswords=1' : ''}`
+      `/api/connections/export?includePasswords=${includePasswords ? '1' : '0'}${id ? `&id=${encodeURIComponent(id)}` : ''}`
     ),
   importSettings: (payload: unknown, replaceExisting: boolean) =>
     request<ImportResult>('/api/connections/import', {

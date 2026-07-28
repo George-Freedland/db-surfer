@@ -69,9 +69,9 @@ export default function App() {
     | { type: 'new-connection' }
     | { type: 'edit-connection'; connection: Connection }
     | { type: 'password'; connection: Connection; error?: string }
-    | { type: 'export-settings' }
     | null
   >(null)
+  const [exportModal, setExportModal] = useState<{ connection?: Connection } | null>(null)
   const [docsOpen, setDocsOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [aiOpen, setAiOpen] = useState(false)
@@ -310,7 +310,7 @@ export default function App() {
   }, [activeTab])
 
   const exportSettings = useCallback(() => {
-    setModal({ type: 'export-settings' })
+    setExportModal({})
   }, [])
 
   const importSettings = useCallback(
@@ -571,6 +571,7 @@ export default function App() {
           connection={modal.connection}
           onSave={handleSaveConnection}
           onClose={() => setModal(null)}
+          onExport={(c) => setExportModal({ connection: c })}
         />
       )}
       {modal?.type === 'password' && (
@@ -598,12 +599,6 @@ export default function App() {
           onAiConfigChanged={setAiConfig}
         />
       )}
-      {modal?.type === 'export-settings' && (
-        <ExportSettingsModal
-          hasSavedPasswords={connections.some((c) => c.hasSavedPassword)}
-          onClose={() => setModal(null)}
-        />
-      )}
       {aiOpen && activeAiKey && (
         <AiAssistModal
           connectionId={activeTab?.connectionId ?? null}
@@ -614,6 +609,17 @@ export default function App() {
             setAiOpen(false)
           }}
           onClose={() => setAiOpen(false)}
+        />
+      )}
+      {exportModal && (
+        <ExportSettingsModal
+          hasSavedPasswords={
+            exportModal.connection
+              ? exportModal.connection.hasSavedPassword
+              : connections.some((c) => c.hasSavedPassword)
+          }
+          connection={exportModal.connection}
+          onClose={() => setExportModal(null)}
         />
       )}
     </div>

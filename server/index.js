@@ -68,12 +68,18 @@ app.get('/api/connections', (_req, res) => {
 
 app.get('/api/connections/export', (req, res) => {
   const includePasswords = req.query.includePasswords === '1';
-  res.json(exportConnections({ includePasswords }));
+  const id = req.query.id || null;
+  res.json(exportConnections({ includePasswords, id }));
 });
 
 app.post('/api/connections/import', (req, res) => {
   const body = req.body || {};
-  const list = Array.isArray(body) ? body : body.connections;
+  // Accept a bulk export ({connections: [...]}), a bare array, or a single
+  // exported connection object.
+  let list = Array.isArray(body) ? body : body.connections;
+  if (!list && typeof body === 'object' && (body.host !== undefined || body.database !== undefined) ) {
+    list = [body];
+  }
   try {
     const summary = importConnections(list, { replaceExisting: Boolean(body.replaceExisting) });
     res.json({ ...summary, connections: listConnections().map(publicConnection) });

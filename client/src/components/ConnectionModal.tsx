@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { Connection, ConnectionInput, DbType } from '../api'
 import { DB_TYPES, DEFAULT_PORTS, typeFromScheme } from '../dbTypes'
 
@@ -14,9 +14,10 @@ interface Props {
   connection?: Connection
   onSave: (input: ConnectionInput, existingId?: string) => Promise<void>
   onClose: () => void
+  onExport?: (connection: Connection) => void
 }
 
-export default function ConnectionModal({ connection, onSave, onClose }: Props) {
+export default function ConnectionModal({ connection, onSave, onClose, onExport }: Props) {
   const [form, setForm] = useState({
     name: connection?.name ?? '',
     type: (connection?.type ?? 'postgres') as DbType,
@@ -31,7 +32,9 @@ export default function ConnectionModal({ connection, onSave, onClose }: Props) 
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [pasteUrl, setPasteUrl] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const set = (patch: Partial<typeof form>) => setForm((f) => ({ ...f, ...patch }))
   const typeInfo = DB_TYPES[form.type]
@@ -64,6 +67,50 @@ export default function ConnectionModal({ connection, onSave, onClose }: Props) 
       })
     } catch {
       /* keep typing */
+    }
+  }
+
+  const importFromFile = async (file: File) => {
+    setError(null)
+    setNotice(null)
+    try {
+      const parsed = JSON.parse(await file.text()) as unknown
+      // Accept a bulk export ({connections: [...]}), a bare array, or a
+      // single exported connection object.
+      let list: Record<string, unknown>[]
+      if (Array.isArray(parsed)) {
+        list = parsed as Record<string, unknown>[]
+      } else if (parsed && typeof parsed === 'object' && Array.isArray((parsed as { connections?: unknown }).connections)) {
+        list = (parsed as { connections: Record<string, unknown>[] }).connections
+      } else if (parsed && typeof parsed === 'object') {
+        list = [parsed as Record<string, unknown>]
+      } else {
+        throw new Error('Not a DBSurfer connection file')
+      }
+      const first = list.find((c) => c && typeof c === 'object')
+      if (!first) throw new Error('No connections found in this file')
+      const type = (typeof first.type === 'string' && first.type in DB_TYPES ? first.type : 'postgres') as DbType
+      set({
+        name: typeof first.name === 'string' ? first.name : '',
+        type,
+        host: typeof first.host === 'string' ? first.host : 'localhost',
+        port: Number(first.port) || DEFAULT_PORTS[type],
+        database: typeof first.database === 'string' ? first.database : '',
+        user: typeof first.user === 'string' ? first.user : '',
+        password: typeof first.password === 'string' ? first.password : '',
+        savePassword: typeof first.password === 'string' && first.password.length > 0,
+        color: typeof first.color === 'string' ? first.color : null,
+        ssl: Boolean(first.ssl),
+      })
+      if (list.length > 1) {
+        setNotice(
+          `This file contains ${list.length} connections; loaded the first one. Use Settings to import all of them at once.`
+        )
+      } else {
+        setNotice(`Loaded "${typeof first.name === 'string' ? first.name : file.name}" from file. Review and save.`)
+      }
+    } catch (err) {
+      setError(`Import failed: ${(err as Error).message}`)
     }
   }
 
@@ -221,8 +268,43 @@ export default function ConnectionModal({ connection, onSave, onClose }: Props) 
         </label>
 
         {error && <div className="form-error">{error}</div>}
+        {notice && <div className="form-notice">{notice}</div>}
 
         <div className="modal-actions">
+          {connection && onExport ? (
+            <button
+              type="button"
+              className="ghost-button"
+              style={{ marginRight: 'auto' }}
+              title="Download this connection as a JSON file"
+              onClick={() => onExport(connection)}
+            >
+              Export…
+            </button>
+          ) : !connection ? (
+            <>
+              <button
+                type="button"
+                className="ghost-button"
+                style={{ marginRight: 'auto' }}
+                title="Fill this form from an exported connection file"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                Import…
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json,application/json"
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) importFromFile(file)
+                  e.target.value = ''
+                }}
+              />
+            </>
+          ) : null}
           <button type="button" className="ghost-button" onClick={onClose}>
             Cancel
           </button>

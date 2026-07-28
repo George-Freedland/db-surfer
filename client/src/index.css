@@ -586,6 +586,11 @@ button {
   font-size: 12px;
 }
 
+.form-notice {
+  color: var(--green, #4ade80);
+  font-size: 12px;
+}
+
 .modal-actions {
   display: flex;
   justify-content: flex-end;

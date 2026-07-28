@@ -88,12 +88,13 @@ export function clearSavedPassword(id) {
 
 const EXPORT_FIELDS = ['name', 'type', 'host', 'port', 'database', 'user', 'color', 'ssl'];
 
-export function exportConnections({ includePasswords = false } = {}) {
+export function exportConnections({ includePasswords = false, id = null } = {}) {
+  const source = id ? connections.filter((c) => c.id === id) : connections;
   return {
     format: 'dbsurfer-connections',
     version: 1,
     exportedAt: new Date().toISOString(),
-    connections: connections.map((conn) => {
+    connections: source.map((conn) => {
       const out = {};
       for (const field of EXPORT_FIELDS) out[field] = conn[field];
       if (includePasswords && conn.password) out.password = conn.password;

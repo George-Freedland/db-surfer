@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "concurrently -n server,client -c blue,magenta \"npm run dev -w server\" \"npm run dev -w client\"",
     "build": "npm run build -w client",
-    "start": "node scripts/start.js"
+    "start": "node scripts/start.mjs"
   },
   "workspaces": [
     "server",
